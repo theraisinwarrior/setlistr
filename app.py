@@ -74,22 +74,25 @@ else:
 st.sidebar.divider()
 
 # ==========================================
-# HELPER: LINKED SLIDER + NUMBER INPUT
+# HELPER: DIRECTLY SYNCHRONIZED SLIDER + NUMBER INPUT
 # ==========================================
 def linked_numeric_input(label, min_v, max_v, default_v, key_prefix, step=1):
-    """Creates side-by-side synchronized slider bar and +/- number box."""
-    val_key = f"{key_prefix}_val"
+    """Creates side-by-side slider and number box that update concurrently."""
     slider_key = f"{key_prefix}_slider"
     num_key = f"{key_prefix}_num"
 
-    if val_key not in st.session_state:
-        st.session_state[val_key] = default_v
+    # Initialize keys if first load
+    if slider_key not in st.session_state:
+        st.session_state[slider_key] = default_v
+    if num_key not in st.session_state:
+        st.session_state[num_key] = default_v
 
-    def sync_slider():
-        st.session_state[val_key] = st.session_state[slider_key]
+    # Direct reciprocal state callbacks
+    def sync_from_slider():
+        st.session_state[num_key] = st.session_state[slider_key]
 
-    def sync_num():
-        st.session_state[val_key] = st.session_state[num_key]
+    def sync_from_num():
+        st.session_state[slider_key] = st.session_state[num_key]
 
     st.sidebar.caption(label)
     c1, c2 = st.sidebar.columns([3, 2])
@@ -98,9 +101,8 @@ def linked_numeric_input(label, min_v, max_v, default_v, key_prefix, step=1):
             label,
             min_value=min_v,
             max_value=max_v,
-            value=st.session_state[val_key],
             key=slider_key,
-            on_change=sync_slider,
+            on_change=sync_from_slider,
             step=step,
             label_visibility="collapsed"
         )
@@ -109,13 +111,12 @@ def linked_numeric_input(label, min_v, max_v, default_v, key_prefix, step=1):
             label,
             min_value=min_v,
             max_value=max_v,
-            value=st.session_state[val_key],
             key=num_key,
-            on_change=sync_num,
+            on_change=sync_from_num,
             step=step,
             label_visibility="collapsed"
         )
-    return st.session_state[val_key]
+    return st.session_state[slider_key]
 
 
 # ==========================================
