@@ -176,37 +176,36 @@ def get_mbid_from_name(artist_query, api_key):
 
 
 # ==========================================
-# HELPER: FAST, MOBILE-OPTIMIZED SPOTIFY TRACK SEARCH
+# HELPER: SAFE, RELIABLE SPOTIFY TRACK SEARCH
 # ==========================================
 def search_spotify_track(sp, artist, song_title, orig_artist):
-    """Clean title upfront to execute ultra-fast 1-query matches on mobile."""
-    # 1. Pre-clean song title upfront
+    """Clean title upfront and search Spotify using safe, unformatted terms."""
+    # Strip text in parentheses/brackets and handle medleys
     clean_title = re.sub(r'[\(\[\{\}\]\)].*?[\)\]\}]', '', song_title)
     clean_title = clean_title.split('/')[0].strip()
+    
     target_title = clean_title if clean_title else song_title
-
-    # Determine primary search artist
-    search_artist = orig_artist if (orig_artist and orig_artist != "Official Release") else artist
+    primary_artist = orig_artist if (orig_artist and orig_artist != "Official Release") else artist
 
     try:
-        # Query 1: Cleaned field search (Succeeds 98% of the time instantly)
-        query = f'artist:"{search_artist}" track:"{target_title}"'
-        res = sp.search(q=query, type="track", limit=1)
+        # Simple, highly reliable query string (doesn't break on punctuation)
+        q_str = f"{primary_artist} {target_title}"
+        res = sp.search(q=q_str, type="track", limit=1)
         items = res.get("tracks", {}).get("items", [])
+        
         if items:
             item = items[0]
             artist_names = ", ".join([a["name"] for a in item.get("artists", [])])
-            method = f"Cover Match ({orig_artist})" if search_artist != artist else "Exact Match"
+            method = f"Cover Match ({orig_artist})" if primary_artist != artist else "Matched"
             return item["uri"], f"{item.get('name')} by {artist_names}", method
-
-        # Query 2: Broad fallback if strict search failed
-        broad_query = f"{search_artist} {target_title}"
-        res = sp.search(q=broad_query, type="track", limit=1)
-        items = res.get("tracks", {}).get("items", [])
-        if items:
-            item = items[0]
+            
+        # Fallback: Search title only
+        res_fb = sp.search(q=target_title, type="track", limit=1)
+        items_fb = res_fb.get("tracks", {}).get("items", [])
+        if items_fb:
+            item = items_fb[0]
             artist_names = ", ".join([a["name"] for a in item.get("artists", [])])
-            return item["uri"], f"{item.get('name')} by {artist_names}", "Fuzzy Fallback"
+            return item["uri"], f"{item.get('name')} by {artist_names}", "Fallback Match"
 
     except Exception:
         pass
@@ -392,73 +391,71 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
             st.warning("Please connect your Spotify account in the sidebar first to enable 1-click export.")
         else:
             if st.button("✨ Create Spotify Playlist Now"):
-                try:
-                    # Get fresh access token
-                    if spotify_refresh_token:
-                        fresh_token_info = sp_oauth.refresh_access_token(spotify_refresh_token)
-                        active_token = fresh_token_info["access_token"]
-                        st.session_state["spotify_token"] = active_token
-                    else:
-                        active_token = st.session_state.get("spotify_token")
-
-                    if not active_token:
-                        st.error("Could not obtain a valid Spotify access token. Please re-connect in sidebar.")
-                    else:
-                        # Set 5-second network timeout to prevent mobile stalls
-                        sp = spotipy.Spotify(auth=active_token, requests_timeout=5)
-                        user_id = sp.me()["id"]
+                with st.spinner("Searching Spotify & creating your playlist..."):
+                    try:
+                        # Refresh access token
+                        active_token = None
+                        if spotify_refresh_token:
+                            try:
+                                fresh_token_info = sp_oauth.refresh_access_token(spotify_refresh_token)
+                                active_token = fresh_token_info["access_token"]
+                                st.session_state["spotify_token"] = active_token
+                            except Exception:
+                                pass
                         
-                        track_uris = []
-                        report_rows = []
-                        
-                        total_tracks = len(df)
-                        progress_bar = st.progress(0, text="Matching songs on Spotify...")
+                        if not active_token:
+                            active_token = st.session_state.get("spotify_token")
 
-                        # Step 1: Match tracks on Spotify and build report
-                        for idx, row in df.iterrows():
-                            song = row["Song Title"]
-                            orig = row["Original Artist"]
-                            
-                            uri, matched_details, match_method = search_spotify_track(sp, current_artist, song, orig)
-                            
-                            if uri:
-                                track_uris.append(uri)
-                                status = "✅ Matched"
-                            else:
-                                status = "❌ Missed"
-                                
-                            report_rows.append({
-                                "Setlist.fm Song": song,
-                                "Status": status,
-                                "Matched Spotify Track": matched_details,
-                                "Match Method": match_method
-                            })
-                            
-                            progress_bar.progress((idx + 1) / total_tracks, text=f"Matching songs on Spotify... ({idx + 1}/{total_tracks})")
-
-                        progress_bar.empty()
-
-                        # Save match report
-                        report_df = pd.DataFrame(report_rows)
-                        st.session_state["match_report_df"] = report_df
-
-                        # Step 2: Create playlist if matches were found
-                        if track_uris:
-                            playlist_name = f"{current_artist} {target_year} Tour Prep" if is_ytd else f"{current_artist} Tour Prep ({total_shows} Shows)"
-                            playlist = sp.user_playlist_create(user=user_id, name=playlist_name, public=True)
-                            
-                            # Add tracks in chunks of 100
-                            for i in range(0, len(track_uris), 100):
-                                sp.playlist_add_items(playlist_id=playlist["id"], items=track_uris[i:i+100])
-
-                            st.balloons()
-                            st.success(f"Created '{playlist_name}' with {len(track_uris)} of {total_tracks} tracks!")
-                            st.markdown(f"### 🎉 [Click Here to Open Your New Spotify Playlist]({playlist['external_urls']['spotify']})")
+                        if not active_token:
+                            st.error("❌ Could not obtain a valid Spotify access token. Please re-connect in sidebar.")
                         else:
-                            st.warning("Could not match any of these tracks on Spotify.")
+                            sp = spotipy.Spotify(auth=active_token)
+                            
+                            track_uris = []
+                            report_rows = []
+                            total_tracks = len(df)
 
-                except Exception as e:
-                    st.error(f"Failed to create playlist: {e}")
+                            # Step 1: Match tracks
+                            for idx, row in df.iterrows():
+                                song = row["Song Title"]
+                                orig = row["Original Artist"]
+                                
+                                uri, matched_details, match_method = search_spotify_track(sp, current_artist, song, orig)
+                                
+                                if uri:
+                                    track_uris.append(uri)
+                                    status = "✅ Matched"
+                                else:
+                                    status = "❌ Missed"
+                                    
+                                report_rows.append({
+                                    "Setlist.fm Song": song,
+                                    "Status": status,
+                                    "Matched Spotify Track": matched_details,
+                                    "Match Method": match_method
+                                })
+
+                            # Save match report
+                            report_df = pd.DataFrame(report_rows)
+                            st.session_state["match_report_df"] = report_df
+
+                            # Step 2: Create playlist
+                            if track_uris:
+                                playlist_name = f"{current_artist} {target_year} Tour Prep" if is_ytd else f"{current_artist} Tour Prep ({total_shows} Shows)"
+                                playlist = sp.current_user_playlist_create(name=playlist_name, public=True)
+                                
+                                # Add tracks in chunks of 100
+                                for i in range(0, len(track_uris), 100):
+                                    sp.playlist_add_items(playlist_id=playlist["id"], items=track_uris[i:i+100])
+
+                                st.balloons()
+                                st.success(f"🎉 Created '{playlist_name}' with {len(track_uris)} of {total_tracks} tracks!")
+                                st.markdown(f"### 👉 [Click Here to Open Your New Spotify Playlist]({playlist['external_urls']['spotify']})")
+                            else:
+                                st.error("Could not match any of these tracks on Spotify. Check the report below.")
+
+                    except Exception as e:
+                        st.error(f"Failed to create playlist: {e}")
 
         # Render Match Report Expander if available
         if "match_report_df" in st.session_state:
