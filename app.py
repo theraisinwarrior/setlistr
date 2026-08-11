@@ -67,11 +67,8 @@ else:
         )
         auth_url = sp_oauth.get_authorize_url()
         st.sidebar.info("Connect your Spotify account once to enable 1-click playlist creation.")
-        # Uses target="_top" to break out of Streamlit's iframe and stay in the same browser tab
-        st.sidebar.markdown(
-            f'👉 <a href="{auth_url}" target="_top" style="font-weight: bold; text-decoration: underline;">Connect Spotify Account</a>', 
-            unsafe_allow_html=True
-        )
+        # Native Streamlit link button bypasses iframe security blocks
+        st.sidebar.link_button("🎵 Connect Spotify Account", auth_url, use_container_width=True)
     else:
         st.sidebar.warning("Enter Spotify Client ID & Secret in Streamlit Secrets to enable login.")
 
