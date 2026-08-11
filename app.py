@@ -18,11 +18,8 @@ st.write("Analyze recent concert setlists from Setlist.fm and automatically buil
 REDIRECT_URI = "https://setlistr2.streamlit.app/"
 
 # ==========================================
-# SIDEBAR CONFIGURATION & CREDENTIALS
+# SILENT CREDENTIAL LOADING
 # ==========================================
-st.sidebar.header("1. API Credentials")
-
-# Load Secrets or Manual Inputs
 setlist_api_key = st.secrets.get("SETLIST_API_KEY", "")
 if not setlist_api_key:
     setlist_api_key = st.sidebar.text_input("Setlist.fm API Key", type="password")
@@ -35,12 +32,9 @@ spotify_client_secret = st.secrets.get("SPOTIPY_CLIENT_SECRET", "")
 if not spotify_client_secret:
     spotify_client_secret = st.sidebar.text_input("Spotify Client Secret", type="password")
 
-st.sidebar.divider()
-
 # ==========================================
 # SPOTIFY AUTHENTICATION HANDLER
 # ==========================================
-# Step A: Handle OAuth Redirect Back from Spotify
 if "code" in st.query_params and "spotify_token" not in st.session_state:
     auth_code = st.query_params["code"]
     try:
@@ -52,15 +46,12 @@ if "code" in st.query_params and "spotify_token" not in st.session_state:
         )
         token_info = sp_oauth.get_access_token(auth_code)
         st.session_state["spotify_token"] = token_info["access_token"]
-        
-        # Clear code from URL bar to prevent token-reuse errors
         st.query_params.clear()
         st.rerun()
     except Exception as e:
         st.sidebar.error(f"Spotify Login Error: {e}")
 
-# Step B: Render Login Status in Sidebar
-st.sidebar.header("2. Spotify Account")
+st.sidebar.header("1. Spotify Account")
 if "spotify_token" in st.session_state:
     st.sidebar.success("✅ Spotify Connected!")
     if st.sidebar.button("Log Out of Spotify"):
@@ -78,26 +69,72 @@ else:
         st.sidebar.info("Connect your Spotify account once to enable 1-click playlist creation.")
         st.sidebar.markdown(f"👉 **[Connect Spotify Account]({auth_url})**")
     else:
-        st.sidebar.warning("Enter Spotify Client ID & Secret to enable login.")
+        st.sidebar.warning("Enter Spotify Client ID & Secret in Streamlit Secrets to enable login.")
 
 st.sidebar.divider()
 
 # ==========================================
+# HELPER: LINKED SLIDER + NUMBER INPUT
+# ==========================================
+def linked_numeric_input(label, min_v, max_v, default_v, key_prefix, step=1):
+    """Creates side-by-side synchronized slider bar and +/- number box."""
+    val_key = f"{key_prefix}_val"
+    slider_key = f"{key_prefix}_slider"
+    num_key = f"{key_prefix}_num"
+
+    if val_key not in st.session_state:
+        st.session_state[val_key] = default_v
+
+    def sync_slider():
+        st.session_state[val_key] = st.session_state[slider_key]
+
+    def sync_num():
+        st.session_state[val_key] = st.session_state[num_key]
+
+    st.sidebar.caption(label)
+    c1, c2 = st.sidebar.columns([3, 2])
+    with c1:
+        st.slider(
+            label,
+            min_value=min_v,
+            max_value=max_v,
+            value=st.session_state[val_key],
+            key=slider_key,
+            on_change=sync_slider,
+            step=step,
+            label_visibility="collapsed"
+        )
+    with c2:
+        st.number_input(
+            label,
+            min_value=min_v,
+            max_value=max_v,
+            value=st.session_state[val_key],
+            key=num_key,
+            on_change=sync_num,
+            step=step,
+            label_visibility="collapsed"
+        )
+    return st.session_state[val_key]
+
+
+# ==========================================
 # SETLIST & TRACK FILTERS
 # ==========================================
-st.sidebar.header("3. Artist & Show Filters")
+st.sidebar.header("2. Artist & Show Filters")
 artist_name_input = st.sidebar.text_input("Artist Name", "Jalen Ngonda")
 
-filter_mode = st.sidebar.selectbox("Filter Mode", ["DAYS", "SHOWS", "BOTH"])
+# Default set to SHOWS
+filter_mode = st.sidebar.selectbox("Filter Mode", ["SHOWS", "DAYS", "BOTH"], index=0)
 
-days_lookback = st.sidebar.number_input("Days Lookback", min_value=1, max_value=365, value=120, step=1)
-max_shows = st.sidebar.number_input("Max Shows to Fetch", min_value=1, max_value=100, value=15, step=1)
-min_songs = st.sidebar.number_input("Min Songs Per Show", min_value=1, max_value=50, value=8, step=1)
+days_lookback = linked_numeric_input("Days Lookback", 1, 365, 120, "days")
+max_shows = linked_numeric_input("Max Shows to Fetch", 1, 100, 15, "shows")
+min_songs = linked_numeric_input("Min Songs Per Show", 1, 50, 8, "songs")
 
-st.sidebar.header("4. Track Filters")
-min_freq = st.sidebar.number_input("Min Play Frequency (%)", min_value=0, max_value=100, value=20, step=5)
+st.sidebar.header("3. Track Filters")
+min_freq = linked_numeric_input("Min Play Frequency (%)", 0, 100, 20, "freq", step=5)
 hide_covers = st.sidebar.checkbox("Exclude Cover Songs", value=False)
-max_playlist_songs = st.sidebar.number_input("Max Playlist Length (0 = Unlimited)", min_value=0, value=25, step=1)
+max_playlist_songs = linked_numeric_input("Max Playlist Length (0 = Unlimited)", 0, 100, 25, "maxp")
 
 
 # ==========================================
@@ -114,18 +151,13 @@ def get_mbid_from_name(artist_query, api_key):
         data = response.json()
         artists = data.get("artist", [])
         if artists:
-            # 1. Priority: Exact name match (case-insensitive)
             for a in artists:
                 if a.get("name", "").strip().lower() == clean_query:
                     return a["mbid"], a["name"]
-            
-            # 2. Priority: First match without "feat" or "with"
             for a in artists:
                 name_lower = a.get("name", "").lower()
                 if "feat" not in name_lower and "with" not in name_lower:
                     return a["mbid"], a["name"]
-
-            # 3. Fallback to top API result
             return artists[0]["mbid"], artists[0]["name"]
             
     return None, None
@@ -139,7 +171,6 @@ if st.button("🚀 Fetch Setlists & Analyze"):
         st.error("Please provide a Setlist.fm API key in Secrets or Sidebar.")
     else:
         with st.spinner("Finding artist and fetching setlists..."):
-            # Smart MBID Resolution
             artist_mbid, official_artist_name = get_mbid_from_name(artist_name_input, setlist_api_key)
             
             if not artist_mbid:
@@ -231,7 +262,6 @@ if st.button("🚀 Fetch Setlists & Analyze"):
                     if max_playlist_songs > 0 and len(df) > max_playlist_songs:
                         df = df.head(int(max_playlist_songs))
 
-                    # Save to session state
                     st.session_state["df"] = df
                     st.session_state["total_shows"] = total_shows
                     st.session_state["artist_name"] = official_artist_name
