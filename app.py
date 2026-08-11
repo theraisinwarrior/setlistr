@@ -67,7 +67,11 @@ else:
         )
         auth_url = sp_oauth.get_authorize_url()
         st.sidebar.info("Connect your Spotify account once to enable 1-click playlist creation.")
-        st.sidebar.markdown(f"👉 **[Connect Spotify Account]({auth_url})**")
+        # Uses target="_top" to break out of Streamlit's iframe and stay in the same browser tab
+        st.sidebar.markdown(
+            f'👉 <a href="{auth_url}" target="_top" style="font-weight: bold; text-decoration: underline;">Connect Spotify Account</a>', 
+            unsafe_allow_html=True
+        )
     else:
         st.sidebar.warning("Enter Spotify Client ID & Secret in Streamlit Secrets to enable login.")
 
@@ -81,13 +85,11 @@ def linked_numeric_input(label, min_v, max_v, default_v, key_prefix, step=1):
     slider_key = f"{key_prefix}_slider"
     num_key = f"{key_prefix}_num"
 
-    # Initialize keys if first load
     if slider_key not in st.session_state:
         st.session_state[slider_key] = default_v
     if num_key not in st.session_state:
         st.session_state[num_key] = default_v
 
-    # Direct reciprocal state callbacks
     def sync_from_slider():
         st.session_state[num_key] = st.session_state[slider_key]
 
