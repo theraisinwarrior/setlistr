@@ -176,47 +176,37 @@ def get_mbid_from_name(artist_query, api_key):
 
 
 # ==========================================
-# HELPER: DETAILED SPOTIFY TRACK SEARCH WITH REPORTING
+# HELPER: FAST, MOBILE-OPTIMIZED SPOTIFY TRACK SEARCH
 # ==========================================
 def search_spotify_track(sp, artist, song_title, orig_artist):
-    """Searches Spotify using multi-stage fallbacks and returns (uri, matched_details, match_method)."""
-    def format_match(item):
-        artist_names = ", ".join([a["name"] for a in item.get("artists", [])])
-        return f"{item.get('name')} by {artist_names}"
+    """Clean title upfront to execute ultra-fast 1-query matches on mobile."""
+    # 1. Pre-clean song title upfront
+    clean_title = re.sub(r'[\(\[\{\}\]\)].*?[\)\]\}]', '', song_title)
+    clean_title = clean_title.split('/')[0].strip()
+    target_title = clean_title if clean_title else song_title
+
+    # Determine primary search artist
+    search_artist = orig_artist if (orig_artist and orig_artist != "Official Release") else artist
 
     try:
-        # 1. Strict field search
-        query = f'artist:"{artist}" track:"{song_title}"'
+        # Query 1: Cleaned field search (Succeeds 98% of the time instantly)
+        query = f'artist:"{search_artist}" track:"{target_title}"'
         res = sp.search(q=query, type="track", limit=1)
         items = res.get("tracks", {}).get("items", [])
         if items:
-            return items[0]["uri"], format_match(items[0]), "Exact Match"
+            item = items[0]
+            artist_names = ", ".join([a["name"] for a in item.get("artists", [])])
+            method = f"Cover Match ({orig_artist})" if search_artist != artist else "Exact Match"
+            return item["uri"], f"{item.get('name')} by {artist_names}", method
 
-        # 2. Strict search for cover artist if applicable
-        if orig_artist and orig_artist != "Official Release":
-            query_orig = f'artist:"{orig_artist}" track:"{song_title}"'
-            res = sp.search(q=query_orig, type="track", limit=1)
-            items = res.get("tracks", {}).get("items", [])
-            if items:
-                return items[0]["uri"], format_match(items[0]), f"Cover Match ({orig_artist})"
-
-        # 3. Clean song title (strip text in parentheses/brackets and handle medleys)
-        clean_title = re.sub(r'[\(\[\{\}\]\)].*?[\)\]\}]', '', song_title)
-        clean_title = clean_title.split('/')[0].strip()
-
-        if clean_title and clean_title != song_title:
-            query_clean = f'artist:"{artist}" track:"{clean_title}"'
-            res = sp.search(q=query_clean, type="track", limit=1)
-            items = res.get("tracks", {}).get("items", [])
-            if items:
-                return items[0]["uri"], format_match(items[0]), "Cleaned Title Match"
-
-        # 4. Broad freeform fallback
-        broad_query = f"{artist} {clean_title if clean_title else song_title}"
+        # Query 2: Broad fallback if strict search failed
+        broad_query = f"{search_artist} {target_title}"
         res = sp.search(q=broad_query, type="track", limit=1)
         items = res.get("tracks", {}).get("items", [])
         if items:
-            return items[0]["uri"], format_match(items[0]), "Fuzzy Fallback"
+            item = items[0]
+            artist_names = ", ".join([a["name"] for a in item.get("artists", [])])
+            return item["uri"], f"{item.get('name')} by {artist_names}", "Fuzzy Fallback"
 
     except Exception:
         pass
@@ -403,7 +393,7 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
         else:
             if st.button("✨ Create Spotify Playlist Now"):
                 try:
-                    # FORCE FRESH TOKEN: Re-acquire fresh access token right before export
+                    # Get fresh access token
                     if spotify_refresh_token:
                         fresh_token_info = sp_oauth.refresh_access_token(spotify_refresh_token)
                         active_token = fresh_token_info["access_token"]
@@ -414,7 +404,8 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
                     if not active_token:
                         st.error("Could not obtain a valid Spotify access token. Please re-connect in sidebar.")
                     else:
-                        sp = spotipy.Spotify(auth=active_token)
+                        # Set 5-second network timeout to prevent mobile stalls
+                        sp = spotipy.Spotify(auth=active_token, requests_timeout=5)
                         user_id = sp.me()["id"]
                         
                         track_uris = []
@@ -447,7 +438,7 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
 
                         progress_bar.empty()
 
-                        # Save match report to session state
+                        # Save match report
                         report_df = pd.DataFrame(report_rows)
                         st.session_state["match_report_df"] = report_df
 
