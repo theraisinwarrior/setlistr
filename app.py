@@ -6,7 +6,9 @@ from datetime import datetime, timedelta
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
-# Page Layout
+# ==========================================
+# PAGE CONFIGURATION & HEADER
+# ==========================================
 st.set_page_config(page_title="Tour Setlist Playlist Generator", page_icon="🎵", layout="wide")
 
 st.title("🎵 Tour Setlist Playlist Generator")
@@ -34,7 +36,7 @@ min_freq = st.sidebar.slider("Min Play Frequency (%)", 0, 100, 20)
 hide_covers = st.sidebar.checkbox("Exclude Cover Songs", value=False)
 max_playlist_songs = st.sidebar.number_input("Max Playlist Length (0 = Unlimited)", min_value=0, value=25)
 
-# API Keys (Loaded from Streamlit Secrets or User Input)
+# API Keys (Loaded automatically from Streamlit Secrets or manual Sidebar input)
 setlist_api_key = st.secrets.get("SETLIST_API_KEY", "")
 if not setlist_api_key:
     setlist_api_key = st.sidebar.text_input("Setlist.fm API Key", type="password")
@@ -52,7 +54,7 @@ if not spotify_client_secret:
 # ==========================================
 if st.button("🚀 Fetch Setlists & Generate Data"):
     if not setlist_api_key:
-        st.error("Please provide a Setlist.fm API key in Secrets or Sidebar.")
+        st.error("Please provide a Setlist.fm API key in Streamlit Secrets or Sidebar.")
     else:
         with st.spinner("Fetching setlists from Setlist.fm..."):
             today = datetime.now()
@@ -142,64 +144,80 @@ if st.button("🚀 Fetch Setlists & Generate Data"):
                 if max_playlist_songs > 0 and len(df) > max_playlist_songs:
                     df = df.head(max_playlist_songs)
 
+                # Persist data across app reruns
                 st.session_state["df"] = df
                 st.session_state["total_shows"] = total_shows
+                st.session_state["artist_name"] = artist_name
                 st.success(f"Successfully processed {total_shows} show(s) and found {len(df)} qualifying song(s)!")
 
-st.divider()
+# ==========================================
+# DATA TABLE & SPOTIFY PLAYLIST GENERATION
+# ==========================================
+if "df" in st.session_state and not st.session_state["df"].empty:
+    df = st.session_state["df"]
+    total_shows = st.session_state["total_shows"]
+    current_artist = st.session_state.get("artist_name", artist_name)
+    
+    st.subheader("📊 Setlist Frequency Table")
+    st.dataframe(df, use_container_width=True)
+
+    st.divider()
     st.subheader("🎧 Create Spotify Playlist")
 
-    # Set exact live Streamlit URL for redirection
-    redirect_uri = "https://setlistr2.streamlit.app/"
-
-    sp_oauth = SpotifyOAuth(
-        client_id=spotify_client_id,
-        client_secret=spotify_client_secret,
-        redirect_uri=redirect_uri,
-        scope="playlist-modify-public playlist-modify-private"
-    )
-
-    # 1. If returning from Spotify authorization redirect
-    if "code" in st.query_params:
-        auth_code = st.query_params["code"]
-        try:
-            with st.spinner("Connecting to Spotify & building playlist..."):
-                token_info = sp_oauth.get_access_token(auth_code)
-                sp = spotipy.Spotify(auth=token_info["access_token"])
-
-                playlist_name = f"{artist_name} Tour Prep ({total_shows} Shows)"
-                playlist = sp.current_user_playlist_create(name=playlist_name, public=True)
-
-                track_uris = []
-                for idx, row in df.iterrows():
-                    song = row["Song Title"]
-                    orig = row["Original Artist"]
-                    
-                    # Exact artist match
-                    query = f'artist:"{artist_name}" track:"{song}"'
-                    res = sp.search(q=query, type="track", limit=1)
-                    items = res.get("tracks", {}).get("items", [])
-                    
-                    # Original artist fallback for covers
-                    if not items and orig != "Official Release":
-                        query_orig = f'artist:"{orig}" track:"{song}"'
-                        res = sp.search(q=query_orig, type="track", limit=1)
-                        items = res.get("tracks", {}).get("items", [])
-
-                    if items:
-                        track_uris.append(items[0]["uri"])
-
-                if track_uris:
-                    sp.playlist_add_items(playlist_id=playlist["id"], items=track_uris)
-                    st.balloons()
-                    st.success(f"Created playlist '{playlist_name}' with {len(track_uris)} tracks!")
-                    st.markdown(f"### 🎉 [Click Here to Open Your New Spotify Playlist]({playlist['external_urls']['spotify']})")
-                else:
-                    st.warning("Could not match any tracks on Spotify.")
-        except Exception as e:
-            st.error(f"Spotify Export Error: {e}")
-
-    # 2. Initial state: Show authorization link button
+    if not spotify_client_id or not spotify_client_secret:
+        st.warning("Please enter your Spotify Client ID and Client Secret in the sidebar or Streamlit Secrets to export.")
     else:
-        auth_url = sp_oauth.get_authorize_url()
-        st.markdown(f"👉 **[Click Here to Authorize with Spotify]({auth_url})**")
+        # Match your exact deployed Streamlit URL
+        redirect_uri = "https://setlistr2.streamlit.app/"
+
+        sp_oauth = SpotifyOAuth(
+            client_id=spotify_client_id,
+            client_secret=spotify_client_secret,
+            redirect_uri=redirect_uri,
+            scope="playlist-modify-public playlist-modify-private"
+        )
+
+        # STATE A: Spotify redirected back with authorization code
+        if "code" in st.query_params:
+            auth_code = st.query_params["code"]
+            try:
+                with st.spinner("Authenticating with Spotify and building your playlist..."):
+                    token_info = sp_oauth.get_access_token(auth_code)
+                    sp = spotipy.Spotify(auth=token_info["access_token"])
+
+                    playlist_name = f"{current_artist} Tour Prep ({total_shows} Shows)"
+                    playlist = sp.current_user_playlist_create(name=playlist_name, public=True)
+
+                    track_uris = []
+                    for idx, row in df.iterrows():
+                        song = row["Song Title"]
+                        orig = row["Original Artist"]
+                        
+                        # 1. Exact performing artist match
+                        query = f'artist:"{current_artist}" track:"{song}"'
+                        res = sp.search(q=query, type="track", limit=1)
+                        items = res.get("tracks", {}).get("items", [])
+                        
+                        # 2. Original artist fallback if cover song
+                        if not items and orig != "Official Release":
+                            query_orig = f'artist:"{orig}" track:"{song}"'
+                            res = sp.search(q=query_orig, type="track", limit=1)
+                            items = res.get("tracks", {}).get("items", [])
+
+                        if items:
+                            track_uris.append(items[0]["uri"])
+
+                    if track_uris:
+                        sp.playlist_add_items(playlist_id=playlist["id"], items=track_uris)
+                        st.balloons()
+                        st.success(f"Successfully created '{playlist_name}' with {len(track_uris)} tracks!")
+                        st.markdown(f"### 🎉 [Click Here to Open Your New Spotify Playlist]({playlist['external_urls']['spotify']})")
+                    else:
+                        st.warning("Could not match any of the tracks on Spotify.")
+            except Exception as e:
+                st.error(f"Spotify Authorization or Export Error: {e}")
+
+        # STATE B: Initial state—Display Spotify login link
+        else:
+            auth_url = sp_oauth.get_authorize_url()
+            st.markdown(f"👉 **[Click Here to Authorize with Spotify]({auth_url})**")
