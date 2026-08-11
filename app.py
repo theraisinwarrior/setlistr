@@ -83,24 +83,38 @@ else:
 st.sidebar.divider()
 
 # ==========================================
-# SETLIST & TRACK FILTERS
+# SETLIST & TRACK FILTERS (NUMERIC INPUT BOXES)
 # ==========================================
 st.sidebar.header("3. Artist & Show Filters")
-artist_name = st.sidebar.text_input("Artist Name", "Foo Fighters")
-artist_mbid = st.sidebar.text_input(
-    "MusicBrainz ID (MBID)", 
-    "67f66c07-6e61-4026-ade5-7e782fad3a5d"
-)
+artist_name_input = st.sidebar.text_input("Artist Name", "Foo Fighters")
 
 filter_mode = st.sidebar.selectbox("Filter Mode", ["DAYS", "SHOWS", "BOTH"])
-days_lookback = st.sidebar.slider("Days Lookback", 7, 180, 30)
-max_shows = st.sidebar.slider("Max Shows to Fetch", 1, 50, 15)
-min_songs = st.sidebar.slider("Min Songs Per Show", 5, 25, 10)
+
+# Direct number input boxes (allows typing exact numbers or stepping with +/-)
+days_lookback = st.sidebar.number_input("Days Lookback", min_value=1, max_value=365, value=30, step=1)
+max_shows = st.sidebar.number_input("Max Shows to Fetch", min_value=1, max_value=100, value=15, step=1)
+min_songs = st.sidebar.number_input("Min Songs Per Show", min_value=1, max_value=50, value=10, step=1)
 
 st.sidebar.header("4. Track Filters")
-min_freq = st.sidebar.slider("Min Play Frequency (%)", 0, 100, 20)
+min_freq = st.sidebar.number_input("Min Play Frequency (%)", min_value=0, max_value=100, value=20, step=5)
 hide_covers = st.sidebar.checkbox("Exclude Cover Songs", value=False)
-max_playlist_songs = st.sidebar.number_input("Max Playlist Length (0 = Unlimited)", min_value=0, value=25)
+max_playlist_songs = st.sidebar.number_input("Max Playlist Length (0 = Unlimited)", min_value=0, value=25, step=1)
+
+
+# ==========================================
+# HELPER: AUTOMATIC MBID LOOKUP
+# ==========================================
+def get_mbid_from_name(artist_query, api_key):
+    """Queries Setlist.fm API to resolve artist name into an MBID."""
+    url = f"https://api.setlist.fm/rest/1.0/search/artists?artistName={requests.utils.quote(artist_query)}"
+    headers = {"x-api-key": api_key, "Accept": "application/json"}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        artists = data.get("artist", [])
+        if artists:
+            return artists[0]["mbid"], artists[0]["name"]
+    return None, None
 
 
 # ==========================================
@@ -110,97 +124,103 @@ if st.button("🚀 Fetch Setlists & Analyze"):
     if not setlist_api_key:
         st.error("Please provide a Setlist.fm API key in Secrets or Sidebar.")
     else:
-        with st.spinner("Fetching setlists from Setlist.fm..."):
-            today = datetime.now()
-            cutoff_date = today - timedelta(days=days_lookback) if filter_mode in ["DAYS", "BOTH"] else None
-            headers = {"x-api-key": setlist_api_key, "Accept": "application/json"}
+        with st.spinner("Finding artist and fetching setlists..."):
+            # Automatic MBID Resolution
+            artist_mbid, official_artist_name = get_mbid_from_name(artist_name_input, setlist_api_key)
             
-            fetched_setlists = []
-            page = 1
-            stop_fetching = False
+            if not artist_mbid:
+                st.error(f"Could not find an artist matching '{artist_name_input}' on Setlist.fm.")
+            else:
+                today = datetime.now()
+                cutoff_date = today - timedelta(days=int(days_lookback)) if filter_mode in ["DAYS", "BOTH"] else None
+                headers = {"x-api-key": setlist_api_key, "Accept": "application/json"}
+                
+                fetched_setlists = []
+                page = 1
+                stop_fetching = False
 
-            while not stop_fetching:
-                url = f"https://api.setlist.fm/rest/1.0/artist/{artist_mbid}/setlists?p={page}"
-                response = requests.get(url, headers=headers)
-                if response.status_code != 200:
-                    st.error(f"Setlist.fm API Error HTTP {response.status_code}. Check API key and MBID.")
-                    break
-                    
-                data = response.json()
-                batch = data.get("setlist", [])
-                if not batch:
-                    break
-                    
-                for show in batch:
-                    event_date_raw = show.get("eventDate")
-                    if not event_date_raw:
-                        continue
-                    show_dt = datetime.strptime(event_date_raw, "%d-%m-%Y")
-                    
-                    if cutoff_date and show_dt < cutoff_date:
-                        stop_fetching = True
+                while not stop_fetching:
+                    url = f"https://api.setlist.fm/rest/1.0/artist/{artist_mbid}/setlists?p={page}"
+                    response = requests.get(url, headers=headers)
+                    if response.status_code != 200:
+                        st.error(f"Setlist.fm API Error HTTP {response.status_code}.")
                         break
                         
-                    sets = show.get("sets", {}).get("set", [])
-                    song_count = sum(len(s.get("song", [])) for s in sets)
-                    
-                    if song_count >= min_songs:
-                        fetched_setlists.append(show)
-                        if filter_mode in ["SHOWS", "BOTH"] and len(fetched_setlists) == max_shows:
+                    data = response.json()
+                    batch = data.get("setlist", [])
+                    if not batch:
+                        break
+                        
+                    for show in batch:
+                        event_date_raw = show.get("eventDate")
+                        if not event_date_raw:
+                            continue
+                        show_dt = datetime.strptime(event_date_raw, "%d-%m-%Y")
+                        
+                        if cutoff_date and show_dt < cutoff_date:
                             stop_fetching = True
                             break
-                page += 1
-
-            total_shows = len(fetched_setlists)
-
-            if total_shows == 0:
-                st.warning("No matching full shows found for these criteria.")
-            else:
-                song_dates = defaultdict(list)
-                song_covers = {}
-
-                for show in fetched_setlists:
-                    event_date = show.get("eventDate")
-                    sets = show.get("sets", {}).get("set", [])
-                    for s in sets:
-                        for song in s.get("song", []):
-                            song_name = song.get("name")
-                            if song_name:
-                                song_dates[song_name].append(event_date)
-                                cover_data = song.get("cover")
-                                if cover_data and "name" in cover_data:
-                                    song_covers[song_name] = cover_data["name"]
-
-                min_plays = (min_freq / 100.0) * total_shows
-                filtered_songs = [
-                    (song, dates) for song, dates in song_dates.items()
-                    if len(dates) >= min_plays
-                ]
-
-                sorted_songs = sorted(filtered_songs, key=lambda item: len(item[1]), reverse=True)
-
-                table_data = []
-                for song, dates in sorted_songs:
-                    is_cover = song in song_covers
-                    if hide_covers and is_cover:
-                        continue
+                            
+                        sets = show.get("sets", {}).get("set", [])
+                        song_count = sum(len(s.get("song", [])) for s in sets)
                         
-                    table_data.append({
-                        "Song Title": song,
-                        "Plays": len(dates),
-                        "Frequency": f"{(len(dates) / total_shows) * 100:.1f}%",
-                        "Original Artist": song_covers.get(song, "Official Release"),
-                        "Last Played": datetime.strptime(dates[0], "%d-%m-%Y").strftime("%m-%d-%y")
-                    })
+                        if song_count >= min_songs:
+                            fetched_setlists.append(show)
+                            if filter_mode in ["SHOWS", "BOTH"] and len(fetched_setlists) == max_shows:
+                                stop_fetching = True
+                                break
+                    page += 1
 
-                df = pd.DataFrame(table_data)
-                if max_playlist_songs > 0 and len(df) > max_playlist_songs:
-                    df = df.head(max_playlist_songs)
+                total_shows = len(fetched_setlists)
 
-                # Store result in session state
-                st.session_state["df"] = df
-                st.session_state["total_shows"] = total_shows
-                st.session_state["artist_name"] = artist_name
+                if total_shows == 0:
+                    st.warning(f"No matching full shows found for '{official_artist_name}' with these criteria.")
+                else:
+                    song_dates = defaultdict(list)
+                    song_covers = {}
+
+                    for show in fetched_setlists:
+                        event_date = show.get("eventDate")
+                        sets = show.get("sets", {}).get("set", [])
+                        for s in sets:
+                            for song in s.get("song", []):
+                                song_name = song.get("name")
+                                if song_name:
+                                    song_dates[song_name].append(event_date)
+                                    cover_data = song.get("cover")
+                                    if cover_data and "name" in cover_data:
+                                        song_covers[song_name] = cover_data["name"]
+
+                    min_plays = (min_freq / 100.0) * total_shows
+                    filtered_songs = [
+                        (song, dates) for song, dates in song_dates.items()
+                        if len(dates) >= min_plays
+                    ]
+
+                    sorted_songs = sorted(filtered_songs, key=lambda item: len(item[1]), reverse=True)
+
+                    table_data = []
+                    for song, dates in sorted_songs:
+                        is_cover = song in song_covers
+                        if hide_covers and is_cover:
+                            continue
+                            
+                        table_data.append({
+                            "Song Title": song,
+                            "Plays": len(dates),
+                            "Frequency": f"{(len(dates) / total_shows) * 100:.1f}%",
+                            "Original Artist": song_covers.get(song, "Official Release"),
+                            "Last Played": datetime.strptime(dates[0], "%d-%m-%Y").strftime("%m-%d-%y")
+                        })
+
+                    df = pd.DataFrame(table_data)
+                    if max_playlist_songs > 0 and len(df) > max_playlist_songs:
+                        df = df.head(int(max_playlist_songs))
+
+                    # Save to session state
+                    st.session_state["df"] = df
+                    st.session_state["total_shows"] = total_shows
+                    st.session_state["artist_name"] = official_artist_name
 
 # ==========================================
 # DISPLAY TABLE & EXPORT
@@ -208,9 +228,9 @@ if st.button("🚀 Fetch Setlists & Analyze"):
 if "df" in st.session_state and not st.session_state["df"].empty:
     df = st.session_state["df"]
     total_shows = st.session_state["total_shows"]
-    current_artist = st.session_state.get("artist_name", artist_name)
+    current_artist = st.session_state.get("artist_name", artist_name_input)
 
-    st.subheader(f"📊 Setlist Frequency Table ({total_shows} Shows Analyzed)")
+    st.subheader(f"📊 {current_artist} — Setlist Frequency Table ({total_shows} Shows Analyzed)")
     st.dataframe(df, use_container_width=True)
 
     st.divider()
