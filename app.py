@@ -136,6 +136,7 @@ min_songs = linked_numeric_input("Min Songs Per Show", 1, 50, 5, "songs")
 st.sidebar.header("3. Track Filters")
 min_freq = linked_numeric_input("Min Play Frequency (%)", 0, 100, 5, "freq", step=5)
 hide_covers = st.sidebar.checkbox("Exclude Cover Songs", value=False)
+hide_tape = st.sidebar.checkbox("Exclude Tape Playbacks (PA/Intros)", value=True)
 max_playlist_songs = linked_numeric_input("Max Playlist Length (0 = Unlimited)", 0, 100, 30, "maxp")
 
 
@@ -200,7 +201,6 @@ if fetch_clicked or ytd_clicked:
                 target_year = st.session_state["target_year"]
 
                 while len(fetched_setlists) < 60 and not stop_fetching:
-                    # DIRECT YEAR FILTERING: Use search endpoint when in Year mode
                     if is_ytd:
                         url = f"https://api.setlist.fm/rest/1.0/search/setlists?artistMbid={artist_mbid}&year={target_year}&p={page}"
                     else:
@@ -281,6 +281,11 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
             sets = show.get("sets", {}).get("set", [])
             for s in sets:
                 for song in s.get("song", []):
+                    # Check for tape playback flag from Setlist.fm
+                    is_tape_playback = song.get("tape", False)
+                    if hide_tape and is_tape_playback:
+                        continue
+
                     song_name = song.get("name")
                     if song_name:
                         song_dates[song_name].append((event_date, show_url))
