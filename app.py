@@ -17,6 +17,9 @@ st.write("Analyze recent concert setlists from Setlist.fm and automatically buil
 # Live Streamlit App Redirect URI
 REDIRECT_URI = "https://setlistr.streamlit.app/"
 
+# Current Calendar Year
+CURRENT_YEAR = datetime.now().year
+
 # ==========================================
 # SILENT CREDENTIAL LOADING
 # ==========================================
@@ -162,9 +165,19 @@ def get_mbid_from_name(artist_query, api_key):
 
 
 # ==========================================
-# API FETCH ACTION
+# SIDE-BY-SIDE ACTION BUTTONS
 # ==========================================
-if st.button("🚀 Fetch Setlists & Analyze"):
+btn_col1, btn_col2 = st.columns(2)
+
+with btn_col1:
+    fetch_clicked = st.button("🚀 Fetch Setlists & Analyze", use_container_width=True)
+
+with btn_col2:
+    ytd_clicked = st.button(f"📅 Most Played ({CURRENT_YEAR})", use_container_width=True)
+
+if fetch_clicked or ytd_clicked:
+    st.session_state["ytd_mode"] = True if ytd_clicked else False
+
     if not setlist_api_key:
         st.error("Please provide a Setlist.fm API key in Secrets or Sidebar.")
     else:
@@ -179,7 +192,6 @@ if st.button("🚀 Fetch Setlists & Analyze"):
                 page = 1
                 stop_fetching = False
 
-                # Buffer fetch up to 50 shows so local toggles work instantaneously
                 while len(fetched_setlists) < 50 and not stop_fetching:
                     url = f"https://api.setlist.fm/rest/1.0/artist/{artist_mbid}/setlists?p={page}"
                     response = requests.get(url, headers=headers)
@@ -209,11 +221,12 @@ if st.button("🚀 Fetch Setlists & Analyze"):
 if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
     raw_setlists = st.session_state["raw_setlists"]
     current_artist = st.session_state.get("artist_name", artist_name_input)
+    is_ytd = st.session_state.get("ytd_mode", False)
 
     today = datetime.now()
     cutoff_date = today - timedelta(days=int(days_lookback)) if filter_mode in ["DAYS", "BOTH"] else None
 
-    # Filter fetched setlists dynamically based on current UI toggles
+    # Filter fetched setlists dynamically based on mode
     filtered_shows = []
     for show in raw_setlists:
         event_date_raw = show.get("eventDate")
@@ -221,29 +234,37 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
             continue
         show_dt = datetime.strptime(event_date_raw, "%d-%m-%Y")
         
-        if cutoff_date and show_dt < cutoff_date:
-            if filter_mode in ["DAYS", "BOTH"]:
+        if is_ytd:
+            # Filter strictly for current calendar year
+            if show_dt.year != CURRENT_YEAR:
                 continue
+        else:
+            if cutoff_date and show_dt < cutoff_date:
+                if filter_mode in ["DAYS", "BOTH"]:
+                    continue
 
         sets = show.get("sets", {}).get("set", [])
         song_count = sum(len(s.get("song", [])) for s in sets)
         
         if song_count >= min_songs:
             filtered_shows.append(show)
-            if filter_mode in ["SHOWS", "BOTH"] and len(filtered_shows) == max_shows:
+            if not is_ytd and filter_mode in ["SHOWS", "BOTH"] and len(filtered_shows) == max_shows:
                 break
 
     total_shows = len(filtered_shows)
 
     if total_shows == 0:
-        st.warning(f"No matching full shows found for '{current_artist}' with the current filter settings.")
+        if is_ytd:
+            st.warning(f"No shows recorded on Setlist.fm for '{current_artist}' in {CURRENT_YEAR} yet.")
+        else:
+            st.warning(f"No matching full shows found for '{current_artist}' with the current filter settings.")
     else:
         song_dates = defaultdict(list)
         song_covers = {}
 
         for show in filtered_shows:
             event_date = show.get("eventDate")
-            show_url = show.get("url", "")  # Setlist.fm web URL for this concert
+            show_url = show.get("url", "")
             sets = show.get("sets", {}).get("set", [])
             for s in sets:
                 for song in s.get("song", []):
@@ -283,12 +304,11 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
         if max_playlist_songs > 0 and len(df) > max_playlist_songs:
             df = df.head(int(max_playlist_songs))
 
-        # Store DataFrame state for Spotify Export
         st.session_state["df"] = df
 
-        st.subheader(f"📊 {current_artist} — Setlist Frequency Table ({total_shows} Shows Analyzed)")
+        title_prefix = f"📅 {CURRENT_YEAR} Most Played Songs" if is_ytd else "📊 Setlist Frequency Table"
+        st.subheader(f"{title_prefix} — {current_artist} ({total_shows} Shows Analyzed)")
         
-        # Render table with clickable link column
         st.dataframe(
             df,
             column_config={
@@ -310,7 +330,7 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
                 with st.spinner("Building playlist on Spotify..."):
                     try:
                         sp = spotipy.Spotify(auth=st.session_state["spotify_token"])
-                        playlist_name = f"{current_artist} Tour Prep ({total_shows} Shows)"
+                        playlist_name = f"{current_artist} {CURRENT_YEAR} Tour Prep" if is_ytd else f"{current_artist} Tour Prep ({total_shows} Shows)"
                         playlist = sp.current_user_playlist_create(name=playlist_name, public=True)
 
                         track_uris = []
