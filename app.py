@@ -243,36 +243,40 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
 
         for show in filtered_shows:
             event_date = show.get("eventDate")
+            show_url = show.get("url", "")  # Setlist.fm web URL for this concert
             sets = show.get("sets", {}).get("set", [])
             for s in sets:
                 for song in s.get("song", []):
                     song_name = song.get("name")
                     if song_name:
-                        song_dates[song_name].append(event_date)
+                        song_dates[song_name].append((event_date, show_url))
                         cover_data = song.get("cover")
                         if cover_data and "name" in cover_data:
                             song_covers[song_name] = cover_data["name"]
 
         min_plays = (min_freq / 100.0) * total_shows
         filtered_songs = [
-            (song, dates) for song, dates in song_dates.items()
-            if len(dates) >= min_plays
+            (song, entries) for song, entries in song_dates.items()
+            if len(entries) >= min_plays
         ]
 
         sorted_songs = sorted(filtered_songs, key=lambda item: len(item[1]), reverse=True)
 
         table_data = []
-        for song, dates in sorted_songs:
+        for song, entries in sorted_songs:
             is_cover = song in song_covers
             if hide_covers and is_cover:
                 continue
                 
+            last_date_raw, last_show_url = entries[0]
+            
             table_data.append({
                 "Song Title": song,
-                "Plays": len(dates),
-                "Frequency": f"{(len(dates) / total_shows) * 100:.1f}%",
+                "Plays": len(entries),
+                "Frequency": f"{(len(entries) / total_shows) * 100:.1f}%",
                 "Original Artist": song_covers.get(song, "Official Release"),
-                "Last Played": datetime.strptime(dates[0], "%d-%m-%Y").strftime("%m-%d-%y")
+                "Last Played": datetime.strptime(last_date_raw, "%d-%m-%Y").strftime("%m-%d-%y"),
+                "Setlist.fm Link": last_show_url
             })
 
         df = pd.DataFrame(table_data)
@@ -283,7 +287,18 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
         st.session_state["df"] = df
 
         st.subheader(f"📊 {current_artist} — Setlist Frequency Table ({total_shows} Shows Analyzed)")
-        st.dataframe(df, use_container_width=True)
+        
+        # Render table with clickable link column
+        st.dataframe(
+            df,
+            column_config={
+                "Setlist.fm Link": st.column_config.LinkColumn(
+                    "Setlist.fm Link",
+                    display_text="View Setlist 🔗"
+                )
+            },
+            use_container_width=True
+        )
 
         st.divider()
         st.subheader("🎧 Export Playlist")
