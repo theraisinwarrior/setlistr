@@ -83,17 +83,16 @@ else:
 st.sidebar.divider()
 
 # ==========================================
-# SETLIST & TRACK FILTERS (NUMERIC INPUT BOXES)
+# SETLIST & TRACK FILTERS
 # ==========================================
 st.sidebar.header("3. Artist & Show Filters")
-artist_name_input = st.sidebar.text_input("Artist Name", "Foo Fighters")
+artist_name_input = st.sidebar.text_input("Artist Name", "Jalen Ngonda")
 
 filter_mode = st.sidebar.selectbox("Filter Mode", ["DAYS", "SHOWS", "BOTH"])
 
-# Direct number input boxes (allows typing exact numbers or stepping with +/-)
-days_lookback = st.sidebar.number_input("Days Lookback", min_value=1, max_value=365, value=30, step=1)
+days_lookback = st.sidebar.number_input("Days Lookback", min_value=1, max_value=365, value=120, step=1)
 max_shows = st.sidebar.number_input("Max Shows to Fetch", min_value=1, max_value=100, value=15, step=1)
-min_songs = st.sidebar.number_input("Min Songs Per Show", min_value=1, max_value=50, value=10, step=1)
+min_songs = st.sidebar.number_input("Min Songs Per Show", min_value=1, max_value=50, value=8, step=1)
 
 st.sidebar.header("4. Track Filters")
 min_freq = st.sidebar.number_input("Min Play Frequency (%)", min_value=0, max_value=100, value=20, step=5)
@@ -102,18 +101,33 @@ max_playlist_songs = st.sidebar.number_input("Max Playlist Length (0 = Unlimited
 
 
 # ==========================================
-# HELPER: AUTOMATIC MBID LOOKUP
+# HELPER: SMART AUTOMATIC MBID LOOKUP
 # ==========================================
 def get_mbid_from_name(artist_query, api_key):
-    """Queries Setlist.fm API to resolve artist name into an MBID."""
-    url = f"https://api.setlist.fm/rest/1.0/search/artists?artistName={requests.utils.quote(artist_query)}"
+    """Queries Setlist.fm API and prioritizes exact solo artist matches over guest features."""
+    clean_query = artist_query.strip().lower()
+    url = f"https://api.setlist.fm/rest/1.0/search/artists?artistName={requests.utils.quote(artist_query)}&sort=relevance"
     headers = {"x-api-key": api_key, "Accept": "application/json"}
+    
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         data = response.json()
         artists = data.get("artist", [])
         if artists:
+            # 1. Priority: Exact name match (case-insensitive)
+            for a in artists:
+                if a.get("name", "").strip().lower() == clean_query:
+                    return a["mbid"], a["name"]
+            
+            # 2. Priority: First match without "feat" or "with"
+            for a in artists:
+                name_lower = a.get("name", "").lower()
+                if "feat" not in name_lower and "with" not in name_lower:
+                    return a["mbid"], a["name"]
+
+            # 3. Fallback to top API result
             return artists[0]["mbid"], artists[0]["name"]
+            
     return None, None
 
 
@@ -125,7 +139,7 @@ if st.button("🚀 Fetch Setlists & Analyze"):
         st.error("Please provide a Setlist.fm API key in Secrets or Sidebar.")
     else:
         with st.spinner("Finding artist and fetching setlists..."):
-            # Automatic MBID Resolution
+            # Smart MBID Resolution
             artist_mbid, official_artist_name = get_mbid_from_name(artist_name_input, setlist_api_key)
             
             if not artist_mbid:
