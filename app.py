@@ -15,7 +15,7 @@ st.title("🎵 Tour Setlist Playlist Generator")
 st.write("Analyze recent concert setlists from Setlist.fm and automatically build a Spotify prep playlist.")
 
 # Live Streamlit App Redirect URI
-REDIRECT_URI = "https://setlistr2.streamlit.app/"
+REDIRECT_URI = "https://setlistr.streamlit.app/"
 
 # ==========================================
 # SILENT CREDENTIAL LOADING
