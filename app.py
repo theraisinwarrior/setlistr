@@ -166,17 +166,18 @@ def get_mbid_from_name(artist_query, api_key):
 
 
 # ==========================================
-# SIDE-BY-SIDE ACTION BUTTONS & YEAR SELECTOR
+# ACTION BUTTONS & YEAR SELECTOR (LAYOUT ORDER)
 # ==========================================
-btn_col1, btn_col2, btn_col3 = st.columns([2, 1, 2])
+btn_col1, btn_col2, btn_col3 = st.columns([2, 2, 1])
+
+# Render Year Selector first so its value is ready for the button text
+with btn_col3:
+    selected_year = st.selectbox("Year", YEAR_OPTIONS, index=0, label_visibility="collapsed")
 
 with btn_col1:
     fetch_clicked = st.button("🚀 Fetch Setlists & Analyze", use_container_width=True)
 
 with btn_col2:
-    selected_year = st.selectbox("Year", YEAR_OPTIONS, index=0, label_visibility="collapsed")
-
-with btn_col3:
     ytd_clicked = st.button(f"📅 Most Played ({selected_year})", use_container_width=True)
 
 if fetch_clicked or ytd_clicked:
