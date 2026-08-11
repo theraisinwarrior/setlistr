@@ -19,7 +19,7 @@ REDIRECT_URI = "https://setlistr.streamlit.app/"
 
 # Current Calendar Year
 CURRENT_YEAR = datetime.now().year
-YEAR_OPTIONS = list(range(CURRENT_YEAR, 1999, -1))  # [2026, 2025, 2024, ...]
+YEAR_OPTIONS = list(range(CURRENT_YEAR, 1999, -1))
 
 # ==========================================
 # SILENT CREDENTIAL LOADING
@@ -125,18 +125,18 @@ def linked_numeric_input(label, min_v, max_v, default_v, key_prefix, step=1):
 # SETLIST & TRACK FILTERS
 # ==========================================
 st.sidebar.header("2. Artist & Show Filters")
-artist_name_input = st.sidebar.text_input("Artist Name", "Jalen Ngonda")
+artist_name_input = st.sidebar.text_input("Artist Name", "Taylor Swift")
 
 filter_mode = st.sidebar.selectbox("Filter Mode", ["SHOWS", "DAYS", "BOTH"], index=0)
 
 days_lookback = linked_numeric_input("Days Lookback", 1, 365, 120, "days")
-max_shows = linked_numeric_input("Max Shows to Fetch", 1, 100, 15, "shows")
-min_songs = linked_numeric_input("Min Songs Per Show", 1, 50, 8, "songs")
+max_shows = linked_numeric_input("Max Shows to Fetch", 1, 100, 20, "shows")
+min_songs = linked_numeric_input("Min Songs Per Show", 1, 50, 5, "songs")
 
 st.sidebar.header("3. Track Filters")
-min_freq = linked_numeric_input("Min Play Frequency (%)", 0, 100, 20, "freq", step=5)
+min_freq = linked_numeric_input("Min Play Frequency (%)", 0, 100, 5, "freq", step=5)
 hide_covers = st.sidebar.checkbox("Exclude Cover Songs", value=False)
-max_playlist_songs = linked_numeric_input("Max Playlist Length (0 = Unlimited)", 0, 100, 25, "maxp")
+max_playlist_songs = linked_numeric_input("Max Playlist Length (0 = Unlimited)", 0, 100, 30, "maxp")
 
 
 # ==========================================
@@ -166,11 +166,10 @@ def get_mbid_from_name(artist_query, api_key):
 
 
 # ==========================================
-# ACTION BUTTONS & YEAR SELECTOR (LAYOUT ORDER)
+# ACTION BUTTONS & YEAR SELECTOR
 # ==========================================
 btn_col1, btn_col2, btn_col3 = st.columns([2, 2, 1])
 
-# Render Year Selector first so its value is ready for the button text
 with btn_col3:
     selected_year = st.selectbox("Year", YEAR_OPTIONS, index=0, label_visibility="collapsed")
 
@@ -197,13 +196,18 @@ if fetch_clicked or ytd_clicked:
                 fetched_setlists = []
                 page = 1
                 stop_fetching = False
+                is_ytd = st.session_state["ytd_mode"]
+                target_year = st.session_state["target_year"]
 
-                while len(fetched_setlists) < 50 and not stop_fetching:
-                    url = f"https://api.setlist.fm/rest/1.0/artist/{artist_mbid}/setlists?p={page}"
+                while len(fetched_setlists) < 60 and not stop_fetching:
+                    # DIRECT YEAR FILTERING: Use search endpoint when in Year mode
+                    if is_ytd:
+                        url = f"https://api.setlist.fm/rest/1.0/search/setlists?artistMbid={artist_mbid}&year={target_year}&p={page}"
+                    else:
+                        url = f"https://api.setlist.fm/rest/1.0/artist/{artist_mbid}/setlists?p={page}"
+
                     response = requests.get(url, headers=headers)
                     if response.status_code != 200:
-                        if page == 1:
-                            st.error(f"Setlist.fm API Error HTTP {response.status_code}.")
                         break
                         
                     data = response.json()
@@ -215,7 +219,10 @@ if fetch_clicked or ytd_clicked:
                     page += 1
 
                 if not fetched_setlists:
-                    st.warning(f"No setlists found for '{official_artist_name}'.")
+                    if is_ytd:
+                        st.warning(f"No shows recorded on Setlist.fm for '{official_artist_name}' in {target_year}.")
+                    else:
+                        st.warning(f"No setlists found for '{official_artist_name}'.")
                 else:
                     st.session_state["raw_setlists"] = fetched_setlists
                     st.session_state["artist_name"] = official_artist_name
@@ -242,7 +249,6 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
         show_dt = datetime.strptime(event_date_raw, "%d-%m-%Y")
         
         if is_ytd:
-            # Filter strictly for selected year
             if show_dt.year != target_year:
                 continue
         else:
