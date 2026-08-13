@@ -89,7 +89,7 @@ st.sidebar.divider()
 # ==========================================
 # FILTER PRESETS CONFIGURATION
 # ==========================================
-PRESETS = {
+BASE_PRESETS = {
     "Custom (Manual Toggles)": None,
     "🎯 Standard Tour Prep": {
         "filter_mode": "SHOWS",
@@ -133,10 +133,18 @@ PRESETS = {
     }
 }
 
+# Initialize session state for user-created presets
+if "custom_presets" not in st.session_state:
+    st.session_state["custom_presets"] = {}
+
+def get_all_presets():
+    return {**BASE_PRESETS, **st.session_state["custom_presets"]}
+
 def apply_preset():
     selected = st.session_state.get("preset_choice")
-    if selected and selected in PRESETS and PRESETS[selected] is not None:
-        p = PRESETS[selected]
+    all_p = get_all_presets()
+    if selected and selected in all_p and all_p[selected] is not None:
+        p = all_p[selected]
         st.session_state["filter_mode_key"] = p["filter_mode"]
         st.session_state["hide_covers_key"] = p["hide_covers"]
         st.session_state["hide_tape_key"] = p["hide_tape"]
@@ -195,13 +203,6 @@ def linked_numeric_input(label, min_v, max_v, default_v, key_prefix, step=1):
 # ==========================================
 st.sidebar.header("2. Artist & Show Filters")
 
-st.sidebar.selectbox(
-    "Filter Presets", 
-    list(PRESETS.keys()), 
-    key="preset_choice", 
-    on_change=apply_preset
-)
-
 artist_name_input = st.sidebar.text_input("Artist Name", "Taylor Swift")
 
 if "filter_mode_key" not in st.session_state:
@@ -212,6 +213,38 @@ if "hide_tape_key" not in st.session_state:
     st.session_state["hide_tape_key"] = True
 
 filter_mode = st.sidebar.selectbox("Filter Mode", ["SHOWS", "DAYS", "BOTH"], key="filter_mode_key")
+
+# Preset Selector placed below Artist Name & Filter Mode
+st.sidebar.selectbox(
+    "Filter Presets", 
+    list(get_all_presets().keys()), 
+    key="preset_choice", 
+    on_change=apply_preset
+)
+
+# Custom Preset Creator
+with st.sidebar.expander("💾 Save Current Toggles as Preset"):
+    new_preset_name = st.text_input("Preset Name", placeholder="e.g. Festival Sets", key="new_preset_name_input")
+    if st.button("Save Preset", use_container_width=True):
+        if new_preset_name.strip():
+            preset_label = f"⭐ {new_preset_name.strip()}"
+            st.session_state["custom_presets"][preset_label] = {
+                "filter_mode": st.session_state.get("filter_mode_key", "SHOWS"),
+                "max_shows": st.session_state.get("shows_slider", 20),
+                "days_lookback": st.session_state.get("days_slider", 120),
+                "min_songs": st.session_state.get("songs_slider", 5),
+                "min_freq": st.session_state.get("freq_slider", 5),
+                "hide_covers": st.session_state.get("hide_covers_key", False),
+                "hide_tape": st.session_state.get("hide_tape_key", True),
+                "max_playlist_songs": st.session_state.get("maxp_slider", 30)
+            }
+            st.session_state["preset_choice"] = preset_label
+            st.success(f"Saved '{preset_label}'!")
+            st.rerun()
+        else:
+            st.warning("Please enter a name for your preset.")
+
+st.sidebar.divider()
 
 days_lookback = linked_numeric_input("Days Lookback", 1, 365, 120, "days")
 max_shows = linked_numeric_input("Max Shows to Fetch", 1, 100, 20, "shows")
