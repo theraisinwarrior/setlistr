@@ -97,6 +97,7 @@ BASE_PRESETS = {
         "days_lookback": 120,
         "min_songs": 8,
         "min_freq": 20,
+        "max_days_since_played": 0,
         "hide_covers": False,
         "hide_tape": True,
         "max_playlist_songs": 25
@@ -107,6 +108,7 @@ BASE_PRESETS = {
         "days_lookback": 180,
         "min_songs": 8,
         "min_freq": 50,
+        "max_days_since_played": 0,
         "hide_covers": False,
         "hide_tape": True,
         "max_playlist_songs": 20
@@ -117,6 +119,7 @@ BASE_PRESETS = {
         "max_shows": 20,
         "min_songs": 5,
         "min_freq": 15,
+        "max_days_since_played": 90,
         "hide_covers": False,
         "hide_tape": True,
         "max_playlist_songs": 25
@@ -127,13 +130,13 @@ BASE_PRESETS = {
         "days_lookback": 365,
         "min_songs": 3,
         "min_freq": 0,
+        "max_days_since_played": 0,
         "hide_covers": False,
         "hide_tape": True,
         "max_playlist_songs": 0
     }
 }
 
-# Initialize session state for user-created presets
 if "custom_presets" not in st.session_state:
     st.session_state["custom_presets"] = {}
 
@@ -149,9 +152,17 @@ def apply_preset():
         st.session_state["hide_covers_key"] = p["hide_covers"]
         st.session_state["hide_tape_key"] = p["hide_tape"]
 
-        for prefix, key in [("days", "days_lookback"), ("shows", "max_shows"), ("songs", "min_songs"), ("freq", "min_freq"), ("maxp", "max_playlist_songs")]:
-            st.session_state[f"{prefix}_slider"] = p[key]
-            st.session_state[f"{prefix}_num"] = p[key]
+        for prefix, key in [
+            ("days", "days_lookback"), 
+            ("shows", "max_shows"), 
+            ("songs", "min_songs"), 
+            ("freq", "min_freq"), 
+            ("recency", "max_days_since_played"),
+            ("maxp", "max_playlist_songs")
+        ]:
+            val = p.get(key, 0)
+            st.session_state[f"{prefix}_slider"] = val
+            st.session_state[f"{prefix}_num"] = val
 
 
 # ==========================================
@@ -214,7 +225,6 @@ if "hide_tape_key" not in st.session_state:
 
 filter_mode = st.sidebar.selectbox("Filter Mode", ["SHOWS", "DAYS", "BOTH"], key="filter_mode_key")
 
-# Preset Selector placed below Artist Name & Filter Mode
 st.sidebar.selectbox(
     "Filter Presets", 
     list(get_all_presets().keys()), 
@@ -222,7 +232,6 @@ st.sidebar.selectbox(
     on_change=apply_preset
 )
 
-# Custom Preset Creator
 with st.sidebar.expander("💾 Save Current Toggles as Preset"):
     new_preset_name = st.text_input("Preset Name", placeholder="e.g. Festival Sets", key="new_preset_name_input")
     if st.button("Save Preset", use_container_width=True):
@@ -234,6 +243,7 @@ with st.sidebar.expander("💾 Save Current Toggles as Preset"):
                 "days_lookback": st.session_state.get("days_slider", 120),
                 "min_songs": st.session_state.get("songs_slider", 5),
                 "min_freq": st.session_state.get("freq_slider", 5),
+                "max_days_since_played": st.session_state.get("recency_slider", 0),
                 "hide_covers": st.session_state.get("hide_covers_key", False),
                 "hide_tape": st.session_state.get("hide_tape_key", True),
                 "max_playlist_songs": st.session_state.get("maxp_slider", 30)
@@ -252,6 +262,7 @@ min_songs = linked_numeric_input("Min Songs Per Show", 1, 50, 5, "songs")
 
 st.sidebar.header("3. Track Filters")
 min_freq = linked_numeric_input("Min Play Frequency (%)", 0, 100, 5, "freq", step=5)
+max_days_since_played = linked_numeric_input("Played Within Last X Days (0 = Disabled)", 0, 365, 0, "recency", step=5)
 hide_covers = st.sidebar.checkbox("Exclude Cover Songs", key="hide_covers_key")
 hide_tape = st.sidebar.checkbox("Exclude Tape Playbacks (PA/Intros)", key="hide_tape_key")
 max_playlist_songs = linked_numeric_input("Max Playlist Length (0 = Unlimited)", 0, 100, 30, "maxp")
@@ -284,10 +295,19 @@ def get_mbid_from_name(artist_query, api_key):
 
 
 # ==========================================
-# HELPER: MATCH VERIFICATION GUARD
+# HELPER: MATCH VERIFICATION GUARDS
 # ==========================================
+def is_artist_match(target_artist, item_artists):
+    """Verifies that the target artist is present in the Spotify track's artist list."""
+    target_clean = re.sub(r'[^a-zA-Z0-9]', '', target_artist.lower())
+    for a in item_artists:
+        a_clean = re.sub(r'[^a-zA-Z0-9]', '', a.get("name", "").lower())
+        if target_clean in a_clean or a_clean in target_clean:
+            return True
+    return False
+
 def is_reasonable_match(requested_title, matched_title):
-    """Verifies that Spotify didn't return an unrelated top track (e.g., You Belong With Me)."""
+    """Verifies that Spotify didn't return an unrelated top track."""
     req_clean = re.sub(r'[^a-zA-Z0-9]', '', requested_title.lower())
     match_clean = re.sub(r'[^a-zA-Z0-9]', '', matched_title.lower())
     
@@ -314,7 +334,7 @@ def is_reasonable_match(requested_title, matched_title):
 # HELPER: PRECISION MULTI-TIER SPOTIFY SEARCH
 # ==========================================
 def search_spotify_track(sp, artist, song_title, orig_artist):
-    """Searches Spotify using field constraints and verifies match quality."""
+    """Searches Spotify using field constraints and verifies BOTH artist and title match."""
     def format_match(item):
         artist_names = ", ".join([a["name"] for a in item.get("artists", [])])
         return f"{item.get('name')} by {artist_names}"
@@ -336,7 +356,7 @@ def search_spotify_track(sp, artist, song_title, orig_artist):
         res1 = sp.search(q=q1, type="track", limit=5)
         items1 = res1.get("tracks", {}).get("items", [])
         for item in items1:
-            if is_reasonable_match(target_title, item.get("name", "")):
+            if is_artist_match(primary_artist, item.get("artists", [])) and is_reasonable_match(target_title, item.get("name", "")):
                 method = f"Cover Match ({orig_artist})" if primary_artist != artist else "Exact Field Match"
                 return item["uri"], format_match(item), method
     except Exception:
@@ -349,7 +369,7 @@ def search_spotify_track(sp, artist, song_title, orig_artist):
         res2 = sp.search(q=q2, type="track", limit=5)
         items2 = res2.get("tracks", {}).get("items", [])
         for item in items2:
-            if is_reasonable_match(target_title, item.get("name", "")):
+            if is_artist_match(primary_artist, item.get("artists", [])) and is_reasonable_match(target_title, item.get("name", "")):
                 return item["uri"], format_match(item), "Cleaned Field Match"
     except Exception:
         pass
@@ -360,7 +380,7 @@ def search_spotify_track(sp, artist, song_title, orig_artist):
         res3 = sp.search(q=q3, type="track", limit=5)
         items3 = res3.get("tracks", {}).get("items", [])
         for item in items3:
-            if is_reasonable_match(target_title, item.get("name", "")):
+            if is_artist_match(primary_artist, item.get("artists", [])) and is_reasonable_match(target_title, item.get("name", "")):
                 return item["uri"], format_match(item), "Exact Phrase Match"
     except Exception:
         pass
@@ -371,10 +391,7 @@ def search_spotify_track(sp, artist, song_title, orig_artist):
         res4 = sp.search(q=q4, type="track", limit=10)
         items4 = res4.get("tracks", {}).get("items", [])
         for item in items4:
-            artist_names = [a["name"].lower() for a in item.get("artists", [])]
-            artist_match = any(safe_artist.lower() in a_name or a_name in safe_artist.lower() for a_name in artist_names)
-            
-            if artist_match and is_reasonable_match(target_title, item.get("name", "")):
+            if is_artist_match(primary_artist, item.get("artists", [])) and is_reasonable_match(target_title, item.get("name", "")):
                 return item["uri"], format_match(item), "Fuzzy Verified Match"
     except Exception:
         pass
@@ -523,13 +540,19 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
                 continue
                 
             last_date_raw, last_show_url = entries[0]
-            
+            last_played_dt = datetime.strptime(last_date_raw, "%d-%m-%Y")
+
+            if max_days_since_played > 0:
+                days_ago = (today - last_played_dt).days
+                if days_ago > max_days_since_played:
+                    continue
+
             table_data.append({
                 "Song Title": song,
                 "Plays": len(entries),
                 "Frequency": f"{(len(entries) / total_shows) * 100:.1f}%",
                 "Original Artist": song_covers.get(song, "Official Release"),
-                "Last Played": datetime.strptime(last_date_raw, "%d-%m-%Y").strftime("%m-%d-%y"),
+                "Last Played": last_played_dt.strftime("%m-%d-%y"),
                 "Setlist.fm Link": last_show_url
             })
 
