@@ -87,6 +87,67 @@ else:
 st.sidebar.divider()
 
 # ==========================================
+# FILTER PRESETS CONFIGURATION
+# ==========================================
+PRESETS = {
+    "Custom (Manual Toggles)": None,
+    "🎯 Standard Tour Prep": {
+        "filter_mode": "SHOWS",
+        "max_shows": 15,
+        "days_lookback": 120,
+        "min_songs": 8,
+        "min_freq": 20,
+        "hide_covers": False,
+        "hide_tape": True,
+        "max_playlist_songs": 25
+    },
+    "⚡ Core Staples Only": {
+        "filter_mode": "SHOWS",
+        "max_shows": 20,
+        "days_lookback": 180,
+        "min_songs": 8,
+        "min_freq": 50,
+        "hide_covers": False,
+        "hide_tape": True,
+        "max_playlist_songs": 20
+    },
+    "⏳ Recent 90 Days": {
+        "filter_mode": "DAYS",
+        "days_lookback": 90,
+        "max_shows": 20,
+        "min_songs": 5,
+        "min_freq": 15,
+        "hide_covers": False,
+        "hide_tape": True,
+        "max_playlist_songs": 25
+    },
+    "🎵 Deep Cuts & Full History": {
+        "filter_mode": "SHOWS",
+        "max_shows": 30,
+        "days_lookback": 365,
+        "min_songs": 3,
+        "min_freq": 0,
+        "hide_covers": False,
+        "hide_tape": True,
+        "max_playlist_songs": 0
+    }
+}
+
+def apply_preset():
+    selected = st.session_state.get("preset_choice")
+    if selected and selected in PRESETS and PRESETS[selected] is not None:
+        p = PRESETS[selected]
+        st.session_state["filter_mode_key"] = p["filter_mode"]
+        st.session_state["hide_covers_key"] = p["hide_covers"]
+        st.session_state["hide_tape_key"] = p["hide_tape"]
+
+        # Numeric input keys
+        for prefix, key in [("days", "days_lookback"), ("shows", "max_shows"), ("songs", "min_songs"), ("freq", "min_freq"), ("maxp", "max_playlist_songs")]:
+            st.session_state[f"{prefix}_slider"] = p[key]
+            st.session_state[f"{prefix}_num"] = p[key]
+
+
+# ==========================================
 # HELPER: DIRECTLY SYNCHRONIZED SLIDER + NUMBER INPUT
 # ==========================================
 def linked_numeric_input(label, min_v, max_v, default_v, key_prefix, step=1):
@@ -134,9 +195,26 @@ def linked_numeric_input(label, min_v, max_v, default_v, key_prefix, step=1):
 # SETLIST & TRACK FILTERS
 # ==========================================
 st.sidebar.header("2. Artist & Show Filters")
+
+# Preset Selector
+st.sidebar.selectbox(
+    "Filter Presets", 
+    list(PRESETS.keys()), 
+    key="preset_choice", 
+    on_change=apply_preset
+)
+
 artist_name_input = st.sidebar.text_input("Artist Name", "Taylor Swift")
 
-filter_mode = st.sidebar.selectbox("Filter Mode", ["SHOWS", "DAYS", "BOTH"], index=0)
+# Initialize state keys for non-numeric controls if first load
+if "filter_mode_key" not in st.session_state:
+    st.session_state["filter_mode_key"] = "SHOWS"
+if "hide_covers_key" not in st.session_state:
+    st.session_state["hide_covers_key"] = False
+if "hide_tape_key" not in st.session_state:
+    st.session_state["hide_tape_key"] = True
+
+filter_mode = st.sidebar.selectbox("Filter Mode", ["SHOWS", "DAYS", "BOTH"], key="filter_mode_key")
 
 days_lookback = linked_numeric_input("Days Lookback", 1, 365, 120, "days")
 max_shows = linked_numeric_input("Max Shows to Fetch", 1, 100, 20, "shows")
@@ -144,8 +222,8 @@ min_songs = linked_numeric_input("Min Songs Per Show", 1, 50, 5, "songs")
 
 st.sidebar.header("3. Track Filters")
 min_freq = linked_numeric_input("Min Play Frequency (%)", 0, 100, 5, "freq", step=5)
-hide_covers = st.sidebar.checkbox("Exclude Cover Songs", value=False)
-hide_tape = st.sidebar.checkbox("Exclude Tape Playbacks (PA/Intros)", value=True)
+hide_covers = st.sidebar.checkbox("Exclude Cover Songs", key="hide_covers_key")
+hide_tape = st.sidebar.checkbox("Exclude Tape Playbacks (PA/Intros)", key="hide_tape_key")
 max_playlist_songs = linked_numeric_input("Max Playlist Length (0 = Unlimited)", 0, 100, 30, "maxp")
 
 
@@ -180,7 +258,6 @@ def get_mbid_from_name(artist_query, api_key):
 # ==========================================
 def search_spotify_track(sp, artist, song_title, orig_artist):
     """Clean title upfront and search Spotify using safe, unformatted terms."""
-    # Strip text in parentheses/brackets and handle medleys
     clean_title = re.sub(r'[\(\[\{\}\]\)].*?[\)\]\}]', '', song_title)
     clean_title = clean_title.split('/')[0].strip()
     
@@ -188,7 +265,6 @@ def search_spotify_track(sp, artist, song_title, orig_artist):
     primary_artist = orig_artist if (orig_artist and orig_artist != "Official Release") else artist
 
     try:
-        # Simple, highly reliable query string (doesn't break on punctuation)
         q_str = f"{primary_artist} {target_title}"
         res = sp.search(q=q_str, type="track", limit=1)
         items = res.get("tracks", {}).get("items", [])
@@ -199,7 +275,6 @@ def search_spotify_track(sp, artist, song_title, orig_artist):
             method = f"Cover Match ({orig_artist})" if primary_artist != artist else "Matched"
             return item["uri"], f"{item.get('name')} by {artist_names}", method
             
-        # Fallback: Search title only
         res_fb = sp.search(q=target_title, type="track", limit=1)
         items_fb = res_fb.get("tracks", {}).get("items", [])
         if items_fb:
@@ -393,7 +468,6 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
             if st.button("✨ Create Spotify Playlist Now"):
                 with st.spinner("Searching Spotify & creating your playlist..."):
                     try:
-                        # Refresh access token
                         active_token = None
                         if spotify_refresh_token:
                             try:
@@ -415,7 +489,6 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
                             report_rows = []
                             total_tracks = len(df)
 
-                            # Step 1: Match tracks
                             for idx, row in df.iterrows():
                                 song = row["Song Title"]
                                 orig = row["Original Artist"]
@@ -435,16 +508,13 @@ if "raw_setlists" in st.session_state and st.session_state["raw_setlists"]:
                                     "Match Method": match_method
                                 })
 
-                            # Save match report
                             report_df = pd.DataFrame(report_rows)
                             st.session_state["match_report_df"] = report_df
 
-                            # Step 2: Create playlist
                             if track_uris:
                                 playlist_name = f"{current_artist} {target_year} Tour Prep" if is_ytd else f"{current_artist} Tour Prep ({total_shows} Shows)"
                                 playlist = sp.current_user_playlist_create(name=playlist_name, public=True)
                                 
-                                # Add tracks in chunks of 100
                                 for i in range(0, len(track_uris), 100):
                                     sp.playlist_add_items(playlist_id=playlist["id"], items=track_uris[i:i+100])
 
