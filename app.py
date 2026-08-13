@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import re
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 import spotipy
@@ -433,7 +434,10 @@ if fetch_clicked or ytd_clicked:
                 is_ytd = st.session_state["ytd_mode"]
                 target_year = st.session_state["target_year"]
 
-                while len(fetched_setlists) < 60 and not stop_fetching:
+                # Dynamically calculate needed raw setlists to guarantee max_shows after filtering
+                needed_raw = max(max_shows + 15, 40) if not is_ytd else 100
+
+                while len(fetched_setlists) < needed_raw and page <= 10 and not stop_fetching:
                     if is_ytd:
                         url = f"https://api.setlist.fm/rest/1.0/search/setlists?artistMbid={artist_mbid}&year={target_year}&p={page}"
                     else:
@@ -450,6 +454,7 @@ if fetch_clicked or ytd_clicked:
                         
                     fetched_setlists.extend(batch)
                     page += 1
+                    time.sleep(0.3) # Pause to respect Setlist.fm 2 req/sec API rate limit
 
                 if not fetched_setlists:
                     if is_ytd:
