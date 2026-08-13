@@ -141,7 +141,6 @@ def apply_preset():
         st.session_state["hide_covers_key"] = p["hide_covers"]
         st.session_state["hide_tape_key"] = p["hide_tape"]
 
-        # Numeric input keys
         for prefix, key in [("days", "days_lookback"), ("shows", "max_shows"), ("songs", "min_songs"), ("freq", "min_freq"), ("maxp", "max_playlist_songs")]:
             st.session_state[f"{prefix}_slider"] = p[key]
             st.session_state[f"{prefix}_num"] = p[key]
@@ -196,7 +195,6 @@ def linked_numeric_input(label, min_v, max_v, default_v, key_prefix, step=1):
 # ==========================================
 st.sidebar.header("2. Artist & Show Filters")
 
-# Preset Selector
 st.sidebar.selectbox(
     "Filter Presets", 
     list(PRESETS.keys()), 
@@ -206,7 +204,6 @@ st.sidebar.selectbox(
 
 artist_name_input = st.sidebar.text_input("Artist Name", "Taylor Swift")
 
-# Initialize state keys for non-numeric controls if first load
 if "filter_mode_key" not in st.session_state:
     st.session_state["filter_mode_key"] = "SHOWS"
 if "hide_covers_key" not in st.session_state:
@@ -254,34 +251,98 @@ def get_mbid_from_name(artist_query, api_key):
 
 
 # ==========================================
-# HELPER: SAFE, RELIABLE SPOTIFY TRACK SEARCH
+# HELPER: MATCH VERIFICATION GUARD
+# ==========================================
+def is_reasonable_match(requested_title, matched_title):
+    """Verifies that Spotify didn't return an unrelated top track (e.g., You Belong With Me)."""
+    req_clean = re.sub(r'[^a-zA-Z0-9]', '', requested_title.lower())
+    match_clean = re.sub(r'[^a-zA-Z0-9]', '', matched_title.lower())
+    
+    if req_clean in match_clean or match_clean in req_clean:
+        return True
+    
+    stop_words = {
+        'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'by', 
+        'is', 'it', 'you', 'me', 'i', 'my', 'your', 'we', 'our', 'us', 'he', 'she', 
+        'him', 'her', 'they', 'them', 'their', 'this', 'that', 'be', 'do', 'are', 'was'
+    }
+    
+    req_words = set(re.findall(r'\w+', requested_title.lower())) - stop_words
+    match_words = set(re.findall(r'\w+', matched_title.lower())) - stop_words
+    
+    if not req_words: 
+        return req_clean in match_clean or match_clean in req_clean
+        
+    overlap = req_words.intersection(match_words)
+    return len(overlap) > 0
+
+
+# ==========================================
+# HELPER: PRECISION MULTI-TIER SPOTIFY SEARCH
 # ==========================================
 def search_spotify_track(sp, artist, song_title, orig_artist):
-    """Clean title upfront and search Spotify using safe, unformatted terms."""
-    clean_title = re.sub(r'[\(\[\{\}\]\)].*?[\)\]\}]', '', song_title)
-    clean_title = clean_title.split('/')[0].strip()
-    
-    target_title = clean_title if clean_title else song_title
+    """Searches Spotify using field constraints and verifies match quality."""
+    def format_match(item):
+        artist_names = ", ".join([a["name"] for a in item.get("artists", [])])
+        return f"{item.get('name')} by {artist_names}"
+
     primary_artist = orig_artist if (orig_artist and orig_artist != "Official Release") else artist
 
-    try:
-        q_str = f"{primary_artist} {target_title}"
-        res = sp.search(q=q_str, type="track", limit=1)
-        items = res.get("tracks", {}).get("items", [])
-        
-        if items:
-            item = items[0]
-            artist_names = ", ".join([a["name"] for a in item.get("artists", [])])
-            method = f"Cover Match ({orig_artist})" if primary_artist != artist else "Matched"
-            return item["uri"], f"{item.get('name')} by {artist_names}", method
-            
-        res_fb = sp.search(q=target_title, type="track", limit=1)
-        items_fb = res_fb.get("tracks", {}).get("items", [])
-        if items_fb:
-            item = items_fb[0]
-            artist_names = ", ".join([a["name"] for a in item.get("artists", [])])
-            return item["uri"], f"{item.get('name')} by {artist_names}", "Fallback Match"
+    # Clean title
+    clean_title = re.sub(r'[\(\[\{\}\]\)].*?[\)\]\}]', '', song_title)
+    clean_title = clean_title.split('/')[0].strip()
+    target_title = clean_title if clean_title else song_title
 
+    # Sanitize for field queries
+    safe_title = re.sub(r'["\\]', '', target_title).strip()
+    safe_artist = re.sub(r'["\\]', '', primary_artist).strip()
+
+    # TIER 1: Strict Field Query track:"..." artist:"..."
+    try:
+        q1 = f'track:"{safe_title}" artist:"{safe_artist}"'
+        res1 = sp.search(q=q1, type="track", limit=5)
+        items1 = res1.get("tracks", {}).get("items", [])
+        for item in items1:
+            if is_reasonable_match(target_title, item.get("name", "")):
+                method = f"Cover Match ({orig_artist})" if primary_artist != artist else "Exact Field Match"
+                return item["uri"], format_match(item), method
+    except Exception:
+        pass
+
+    # TIER 2: Unquoted Field Query track:... artist:...
+    try:
+        clean_terms_title = re.sub(r'[^a-zA-Z0-9\s]', ' ', target_title).strip()
+        q2 = f'track:{clean_terms_title} artist:"{safe_artist}"'
+        res2 = sp.search(q=q2, type="track", limit=5)
+        items2 = res2.get("tracks", {}).get("items", [])
+        for item in items2:
+            if is_reasonable_match(target_title, item.get("name", "")):
+                return item["uri"], format_match(item), "Cleaned Field Match"
+    except Exception:
+        pass
+
+    # TIER 3: Exact Phrase Search "Artist" "Title"
+    try:
+        q3 = f'"{safe_artist}" "{safe_title}"'
+        res3 = sp.search(q=q3, type="track", limit=5)
+        items3 = res3.get("tracks", {}).get("items", [])
+        for item in items3:
+            if is_reasonable_match(target_title, item.get("name", "")):
+                return item["uri"], format_match(item), "Exact Phrase Match"
+    except Exception:
+        pass
+
+    # TIER 4: Broad Search with Strict Artist & Title Verification
+    try:
+        q4 = f'{safe_artist} {safe_title}'
+        res4 = sp.search(q=q4, type="track", limit=10)
+        items4 = res4.get("tracks", {}).get("items", [])
+        for item in items4:
+            artist_names = [a["name"].lower() for a in item.get("artists", [])]
+            artist_match = any(safe_artist.lower() in a_name or a_name in safe_artist.lower() for a_name in artist_names)
+            
+            if artist_match and is_reasonable_match(target_title, item.get("name", "")):
+                return item["uri"], format_match(item), "Fuzzy Verified Match"
     except Exception:
         pass
 
