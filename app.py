@@ -691,7 +691,7 @@ with tab2:
 
         st.divider()
 
-        # 3. True Venue Footprint Map with OpenStreetMap Street Coordinates
+        # 3. True Venue Footprint Map with Crisp Pin Scaling
         st.subheader("Geographic Footprint")
         map_data = df_att.dropna(subset=['lat', 'long']).copy()
         
@@ -703,10 +703,14 @@ with tab2:
             })
         ).reset_index()
 
+        # Square-root radius calculation to keep high show counts proportional
+        import numpy as np
+        venue_summary['radius'] = np.sqrt(venue_summary['count']) * 40 + 40
+
         view_state = pdk.ViewState(
-            latitude=venue_summary['lat'].mean() if not venue_summary.empty else 40.7128,
-            longitude=venue_summary['long'].mean() if not venue_summary.empty else -74.0060,
-            zoom=10,  # Zoomed directly into exact venue street layout
+            latitude=40.7500,
+            longitude=-73.9800,
+            zoom=10,
             pitch=0
         )
 
@@ -715,9 +719,9 @@ with tab2:
             venue_summary,
             get_position=["long", "lat"],
             get_color="[29, 185, 84, 220]", # Spotify Green
-            radius_min_pixels=7,
-            radius_max_pixels=22,
-            get_radius="count * 80",
+            radius_min_pixels=5,
+            radius_max_pixels=15,
+            get_radius="radius",
             pickable=True,
         )
 
