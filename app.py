@@ -662,7 +662,7 @@ with tab2:
             'url': 'first'
         }).sort_values('eventDate_dt', ascending=False)
         
-        # Parse individual song names from JSON column
+        # Parse individual song names from JSON column (deduplicated per show)
         all_songs = []
         for idx, row in df_att.iterrows():
             artist_name = row['artist']
@@ -672,15 +672,16 @@ with tab2:
             if pd.notna(song_json):
                 try:
                     s_list = json.loads(song_json)
-                    for s in s_list:
-                        if s and isinstance(s, str) and s.strip():
-                            all_songs.append({
-                                'song': s.strip(),
-                                'artist': artist_name,
-                                'venue': v_name,
-                                'Date': d_str,
-                                'track_artist': f"{s.strip()} — {artist_name}"
-                            })
+                    # Deduplicate songs within each individual setlist
+                    unique_songs = list(dict.fromkeys([s.strip() for s in s_list if s and isinstance(s, str) and s.strip()]))
+                    for s in unique_songs:
+                        all_songs.append({
+                            'song': s,
+                            'artist': artist_name,
+                            'venue': v_name,
+                            'Date': d_str,
+                            'track_artist': f"{s} — {artist_name}"
+                        })
                 except Exception:
                     pass
 
