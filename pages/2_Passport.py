@@ -3,8 +3,9 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from data.attendance import process_attendance
-from data.store import clear_sync_cache, load_csv_attendance, sync_attended_shows
+from data.attendance import apply_venue_overrides, process_attendance
+from data.store import (clear_sync_cache, load_csv_attendance, load_venue_overrides,
+                        sync_attended_shows)
 from services.auth import get_setlist_api_key
 from services.setlistfm import SetlistFmError, get_global_artist_stats
 
@@ -29,6 +30,7 @@ with b_col:
         st.rerun()
 
 raw_attendance = None
+venues_needing_coords = None
 if username.strip() and api_key_for_sync:
     try:
         with st.spinner(f"Syncing attended shows for {username.strip()} from setlist.fm "
@@ -38,6 +40,9 @@ if username.strip() and api_key_for_sync:
             st.info(f"No attended shows found for '{username.strip()}'. "
                     "Mark shows as attended on setlist.fm and refresh.")
             st.stop()
+        # setlist.fm only knows city-level coordinates, so use the hand-fixed venue ones
+        raw_attendance, venues_needing_coords = apply_venue_overrides(
+            raw_attendance, load_venue_overrides())
         st.caption(f"✅ Synced {len(raw_attendance)} setlists from setlist.fm "
                    f"for **{username.strip()}** (refreshes automatically once a day).")
     except SetlistFmError as e:
@@ -152,6 +157,13 @@ try:
                         font_color="#FFFFFF"),
     )
     st.plotly_chart(fig_map, use_container_width=True)
+
+    if venues_needing_coords is not None and not venues_needing_coords.empty:
+        with st.expander(f"📍 {len(venues_needing_coords)} venue(s) need exact map coordinates"):
+            st.write("These venues have no saved coordinates, so setlist.fm's city-level "
+                     "location is used and they may stack on top of each other. To fix one, add a row "
+                     "(`venue,city,lat,long`) to `venue_coordinates.csv` in your GitHub repo.")
+            st.dataframe(venues_needing_coords, use_container_width=True, hide_index=True)
 
     st.divider()
 

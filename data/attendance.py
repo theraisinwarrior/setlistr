@@ -7,6 +7,51 @@ RAW_COLUMNS = ["eventDate", "artist", "venue", "city", "state", "lat", "long",
                "song_count", "tour", "url", "songs"]
 
 
+def _norm(value) -> str:
+    return " ".join(str(value).lower().split()) if pd.notna(value) else ""
+
+
+def apply_venue_overrides(df_raw: pd.DataFrame, overrides: pd.DataFrame):
+    """Replace setlist.fm's city-level coordinates with hand-corrected venue coordinates.
+
+    `overrides` needs columns venue, lat, long (and optionally city). Rows earlier in
+    `overrides` win. Matching tries venue + city first, then venue name alone.
+
+    Returns (updated_df, needs_coords) where needs_coords lists venues that had no
+    override, so they still sit on setlist.fm's city-level point.
+    """
+    df = df_raw.copy()
+    if df.empty:
+        return df, pd.DataFrame(columns=["venue", "city", "state", "shows"])
+
+    by_venue_city, by_venue = {}, {}
+    if overrides is not None and not overrides.empty:
+        for _, r in overrides.iterrows():
+            lat = pd.to_numeric(r.get("lat"), errors="coerce")
+            lon = pd.to_numeric(r.get("long"), errors="coerce")
+            if pd.isna(lat) or pd.isna(lon):
+                continue
+            v = _norm(r.get("venue"))
+            by_venue_city.setdefault((v, _norm(r.get("city"))), (lat, lon))
+            by_venue.setdefault(v, (lat, lon))
+
+    matched = []
+    for i, row in df.iterrows():
+        v = _norm(row["venue"])
+        hit = by_venue_city.get((v, _norm(row["city"]))) or by_venue.get(v)
+        if hit:
+            df.at[i, "lat"], df.at[i, "long"] = hit
+        matched.append(bool(hit))
+
+    df["_matched"] = matched
+    missing = (df[~df["_matched"]]
+               .groupby(["venue", "city", "state"], as_index=False).size()
+               .rename(columns={"size": "shows"})
+               .sort_values("shows", ascending=False))
+    df = df.drop(columns="_matched")
+    return df, missing
+
+
 def setlists_to_dataframe(setlists: list) -> pd.DataFrame:
     """Turn setlist.fm API setlist objects into the table the Passport uses."""
     rows = []

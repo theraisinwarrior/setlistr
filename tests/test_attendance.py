@@ -59,3 +59,18 @@ def test_empty_input():
     assert df.empty
     df_att, df_concerts, df_songs = process_attendance(df)
     assert df_concerts.empty and df_songs.empty
+
+
+def test_venue_overrides_replace_city_level_coords():
+    import pandas as pd
+    from data.attendance import apply_venue_overrides
+
+    df = setlists_to_dataframe(FAKE)
+    overrides = pd.DataFrame([
+        {"venue": "madison square  garden", "city": "New York", "lat": 40.7505, "long": -73.9934},
+    ])
+    out, missing = apply_venue_overrides(df, overrides)
+    msg = out[out["venue"] == "Madison Square Garden"]
+    assert (msg["lat"] == 40.7505).all() and (msg["long"] == -73.9934).all()
+    assert list(missing["venue"]) == ["Small Club"]  # no override, so flagged
+    assert apply_venue_overrides(df.iloc[0:0], overrides)[1].empty

@@ -18,6 +18,29 @@ def clear_sync_cache() -> None:
     sync_attended_shows.clear()
 
 
+VENUE_COORDS_CSV = "venue_coordinates.csv"  # optional: columns venue, lat, long (city optional)
+
+
+def load_venue_overrides() -> pd.DataFrame:
+    """Hand-corrected venue coordinates.
+
+    Priority: venue_coordinates.csv first, then the coordinates already stored in
+    attended_shows.csv. Missing files are simply skipped.
+    """
+    frames = []
+    for path in (VENUE_COORDS_CSV, ATTENDANCE_CSV):
+        try:
+            df = pd.read_csv(path)
+        except FileNotFoundError:
+            continue
+        if {"venue", "lat", "long"}.issubset(df.columns):
+            cols = [c for c in ("venue", "city", "lat", "long") if c in df.columns]
+            frames.append(df[cols])
+    if not frames:
+        return pd.DataFrame(columns=["venue", "city", "lat", "long"])
+    return pd.concat(frames, ignore_index=True)
+
+
 def load_csv_attendance() -> pd.DataFrame:
     """Fallback source. Raises FileNotFoundError if the CSV is missing."""
     return pd.read_csv(ATTENDANCE_CSV)
