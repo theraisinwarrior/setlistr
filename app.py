@@ -643,8 +643,12 @@ with tab2:
     @st.cache_data
     def load_attendance():
         df_att = pd.read_csv("attended_shows.csv")
-        df_att['eventDate'] = pd.to_datetime(df_att['eventDate'])
-        df_att['year'] = df_att['eventDate'].dt.year
+        
+        # Convert date to datetime and format as MM-DD-YYYY string
+        df_att['eventDate_dt'] = pd.to_datetime(df_att['eventDate'], errors='coerce')
+        df_att['Date'] = df_att['eventDate_dt'].dt.strftime('%m-%d-%Y')
+        
+        df_att['year'] = df_att['eventDate_dt'].dt.year
         df_att['lat'] = pd.to_numeric(df_att['lat'], errors='coerce')
         df_att['long'] = pd.to_numeric(df_att['long'], errors='coerce')
         return df_att
@@ -687,39 +691,71 @@ with tab2:
 
         st.divider()
 
-        # 3. Interactive Venue Map
+        # 3. Dynamic Venue Map with Crisp Zoom Scaling & Detailed Hover Tooltips
         st.subheader("Geographic Footprint")
         map_data = df_att.dropna(subset=['lat', 'long']).copy()
-        venue_counts = map_data.groupby(['venue', 'city', 'state', 'lat', 'long']).size().reset_index(name='count')
+        
+        # Aggregate venue metrics & top artists seen at each location
+        venue_summary = map_data.groupby(['venue', 'city', 'state', 'lat', 'long']).apply(
+            lambda g: pd.Series({
+                'count': len(g),
+                'top_artists': ", ".join(g['artist'].value_counts().head(3).index)
+            })
+        ).reset_index()
 
         view_state = pdk.ViewState(
-            latitude=venue_counts['lat'].mean() if not venue_counts.empty else 40.0,
-            longitude=venue_counts['long'].mean() if not venue_counts.empty else -95.0,
+            latitude=venue_summary['lat'].mean() if not venue_summary.empty else 40.0,
+            longitude=venue_summary['long'].mean() if not venue_summary.empty else -95.0,
             zoom=4,
             pitch=0
         )
 
         layer = pdk.Layer(
             "ScatterplotLayer",
-            venue_counts,
+            venue_summary,
             get_position=["long", "lat"],
-            get_color="[29, 185, 84, 180]",
-            get_radius="count * 12000 + 8000",
+            get_color="[29, 185, 84, 200]",
+            radius_min_pixels=6,   # Keeps dots readable when zoomed out
+            radius_max_pixels=25,  # Prevents massive green circle blobs when zoomed in
+            get_radius="count * 100",
             pickable=True,
         )
 
         st.pydeck_chart(pdk.Deck(
             layers=[layer],
             initial_view_state=view_state,
-            tooltip={"html": "<b>{venue}</b> ({city}, {state})<br/>Shows: {count}"}
+            tooltip={
+                "html": "<b>{venue}</b><br/>"
+                        "📍 {city}, {state}<br/>"
+                        "🎟️ <b>Shows Attended:</b> {count}<br/>"
+                        "⭐ <b>Top Artists Seen:</b> {top_artists}"
+            }
         ))
 
-        # 4. Filterable Attendance Table
+        # 4. Clean Attendance Table with Custom Formatting & Links
         st.divider()
         st.subheader("Full Attendance History")
+        
+        display_cols = ['Date', 'artist', 'venue', 'city', 'state', 'tour', 'song_count']
+        column_configs = {
+            "Date": st.column_config.TextColumn("Date"),
+            "artist": st.column_config.TextColumn("Artist"),
+            "venue": st.column_config.TextColumn("Venue"),
+            "city": st.column_config.TextColumn("City"),
+            "state": st.column_config.TextColumn("State"),
+            "tour": st.column_config.TextColumn("Tour"),
+            "song_count": st.column_config.NumberColumn("Songs"),
+        }
+
+        if 'url' in df_att.columns:
+            display_cols.append('url')
+            column_configs["url"] = st.column_config.LinkColumn("Setlist Link", display_text="View Setlist 🔗")
+
         st.dataframe(
-            df_att[['eventDate', 'artist', 'venue', 'city', 'state', 'tour', 'song_count']],
-            use_container_width=True
+            df_att[display_cols],
+            column_config=column_configs,
+            use_container_width=True,
+            hide_index=True
         )
 
     except FileNotFoundError:
