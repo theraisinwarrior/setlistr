@@ -724,5 +724,3 @@ with tab2:
 
     except FileNotFoundError:
         st.warning("`attended_shows.csv` not found in project directory. Please run `fetch_attendance.py` locally and commit the CSV to your repository.")
-
-```
