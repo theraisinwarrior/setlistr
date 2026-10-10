@@ -690,7 +690,7 @@ with tab2:
 
         st.divider()
 
-        # 3. Interactive Venue Footprint Map using Plotly Mapbox
+        # 3. Interactive Venue Footprint Map using Plotly (v5 & v6 Compatible)
         st.subheader("Geographic Footprint")
         st.caption("💡 Hover over or click any green pin to view venue stats!")
 
@@ -712,15 +712,18 @@ with tab2:
         coords_df = map_data[['venue', 'lat', 'long']].drop_duplicates(subset=['venue'])
         venue_summary = venue_summary.merge(coords_df, on='venue', how='left')
 
-        fig_map = px.scatter_mapbox(
-            venue_summary,
-            lat="lat",
-            lon="long",
-            size="Shows Attended",
-            size_max=22,
-            color_discrete_sequence=["#1DB954"], # Spotify Green
-            hover_name="venue",
-            hover_data={
+        # Version-safe Plotly Map function (scatter_map in v6+, scatter_mapbox in v5)
+        map_fn = getattr(px, "scatter_map", getattr(px, "scatter_mapbox", None))
+        
+        map_kwargs = {
+            "data_frame": venue_summary,
+            "lat": "lat",
+            "lon": "long",
+            "size": "Shows Attended",
+            "size_max": 20,
+            "color_discrete_sequence": ["#1DB954"],  # Spotify Green
+            "hover_name": "venue",
+            "hover_data": {
                 "lat": False,
                 "long": False,
                 "City": True,
@@ -728,11 +731,18 @@ with tab2:
                 "Shows Attended": True,
                 "Top Artists": True
             },
-            zoom=10,
-            center={"lat": 40.7500, "lon": -73.9800},
-            mapbox_style="open-street-map",
-            height=520
-        )
+            "zoom": 10,
+            "center": {"lat": 40.7500, "lon": -73.9800},
+            "height": 520
+        }
+
+        # Set appropriate tile parameter based on installed Plotly version
+        if hasattr(px, "scatter_map"):
+            map_kwargs["map_style"] = "open-street-map"
+        else:
+            map_kwargs["mapbox_style"] = "open-street-map"
+
+        fig_map = map_fn(**map_kwargs)
 
         fig_map.update_layout(
             margin={"r": 0, "t": 0, "l": 0, "b": 0},
