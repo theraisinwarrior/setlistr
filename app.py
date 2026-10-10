@@ -644,10 +644,9 @@ with tab2:
     def load_attendance():
         df_att = pd.read_csv("attended_shows.csv")
         
-        # Convert date to datetime and format as MM-DD-YYYY string
+        # Convert date to datetime and format as clean MM-DD-YYYY
         df_att['eventDate_dt'] = pd.to_datetime(df_att['eventDate'], errors='coerce')
         df_att['Date'] = df_att['eventDate_dt'].dt.strftime('%m-%d-%Y')
-        
         df_att['year'] = df_att['eventDate_dt'].dt.year
         df_att['lat'] = pd.to_numeric(df_att['lat'], errors='coerce')
         df_att['long'] = pd.to_numeric(df_att['long'], errors='coerce')
@@ -691,19 +690,20 @@ with tab2:
 
         st.divider()
 
-        # 3. True Venue Footprint Map with Crisp Pin Scaling
+        # 3. Interactive Venue Footprint Map
         st.subheader("Geographic Footprint")
+        st.caption("💡 Hover over any green pin on the map to see the venue name, show count, and top artists seen there!")
+        
         map_data = df_att.dropna(subset=['lat', 'long']).copy()
         
-        # Aggregate show counts and top artists for each exact venue location
-        venue_summary = map_data.groupby(['venue', 'city', 'state', 'lat', 'long']).apply(
-            lambda g: pd.Series({
+        # Aggregate show counts and top artists for each venue
+        def agg_venue(g):
+            return pd.Series({
                 'count': len(g),
                 'top_artists': ", ".join(g['artist'].value_counts().head(3).index)
             })
-        ).reset_index()
 
-        # Square-root radius calculation to keep high show counts proportional
+        venue_summary = map_data.groupby(['venue', 'city', 'state', 'lat', 'long']).apply(agg_venue).reset_index()
         import numpy as np
         venue_summary['radius'] = np.sqrt(venue_summary['count']) * 40 + 40
 
@@ -719,8 +719,8 @@ with tab2:
             venue_summary,
             get_position=["long", "lat"],
             get_color="[29, 185, 84, 220]", # Spotify Green
-            radius_min_pixels=5,
-            radius_max_pixels=15,
+            radius_min_pixels=6,
+            radius_max_pixels=18,
             get_radius="radius",
             pickable=True,
         )
@@ -730,18 +730,40 @@ with tab2:
             layers=[scatter_layer],
             initial_view_state=view_state,
             tooltip={
-                "html": "<div style='font-family: sans-serif; padding: 4px;'>"
-                        "<b style='font-size: 14px;'>{venue}</b><br/>"
-                        "📍 {city}, {state}<br/>"
+                "html": "<div style='font-family: sans-serif; padding: 6px; color: white; background-color: #191414; border-radius: 4px;'>"
+                        "<b style='font-size: 15px; color: #1DB954;'>{venue}</b><br/>"
+                        "📍 <b>Location:</b> {city}, {state}<br/>"
                         "🎟️ <b>Shows Attended:</b> {count}<br/>"
-                        "⭐ <b>Top Artists:</b> {top_artists}"
-                        "</div>"
+                        "⭐ <b>Top Artists Seen:</b> {top_artists}"
+                        "</div>",
+                "style": {"backgroundColor": "transparent", "color": "white", "zIndex": "10000"}
             }
         ))
 
-        # 4. Clean Attendance Table with Custom Formatting & Links
+        # 4. Interactive Venue Inspector Dropdown
+        st.markdown("### 🔍 Venue Inspector")
+        venue_list = sorted(venue_summary['venue'].unique())
+        default_idx = venue_list.index("Madison Square Garden") if "Madison Square Garden" in venue_list else 0
+        
+        selected_venue = st.selectbox("Select a venue to view concert history:", venue_list, index=default_idx)
+
+        if selected_venue:
+            v_shows = df_att[df_att['venue'] == selected_venue]
+            
+            v_col1, v_col2, v_col3 = st.columns(3)
+            v_col1.metric("Shows at Venue", len(v_shows))
+            v_col2.metric("Unique Artists Seen", v_shows['artist'].nunique())
+            v_col3.metric("Most Seen Artist Here", v_shows['artist'].mode()[0] if not v_shows.empty else "N/A")
+            
+            st.dataframe(
+                v_shows[['Date', 'artist', 'tour', 'song_count']],
+                use_container_width=True,
+                hide_index=True
+            )
+
+        # 5. Complete Attendance Log Table
         st.divider()
-        st.subheader("Full Attendance History")
+        st.subheader("Full Attendance History Log")
         
         display_cols = ['Date', 'artist', 'venue', 'city', 'state', 'tour', 'song_count']
         column_configs = {
@@ -766,4 +788,4 @@ with tab2:
         )
 
     except FileNotFoundError:
-        st.warning("`attended_shows.csv` not found in project directory. Please run `fetch_attendance.py` locally and commit the CSV to your repository.")
+        st.warning("`attended_shows.csv` not found in project directory.")
