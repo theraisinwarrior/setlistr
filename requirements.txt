@@ -1,6 +1,6 @@
-streamlit
-requests
-pandas
-spotipy
-plotly
-pydeck
+streamlit>=1.40
+requests>=2.31
+pandas>=2.1
+plotly>=5.24
+spotipy>=2.24
+pytest>=8.0
