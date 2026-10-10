@@ -691,7 +691,7 @@ with tab2:
 
         st.divider()
 
-        # 3. Dynamic Venue Map with Crisp Zoom Scaling & Detailed Hover Tooltips
+        # 3. High-Detail Venue Map with Permanent Text Labels & Street Tiles
         st.subheader("Geographic Footprint")
         map_data = df_att.dropna(subset=['lat', 'long']).copy()
         
@@ -706,29 +706,45 @@ with tab2:
         view_state = pdk.ViewState(
             latitude=venue_summary['lat'].mean() if not venue_summary.empty else 40.0,
             longitude=venue_summary['long'].mean() if not venue_summary.empty else -95.0,
-            zoom=4,
+            zoom=10, # Slightly tighter default zoom for local clarity
             pitch=0
         )
 
-        layer = pdk.Layer(
+        # Pin Dots Layer
+        scatter_layer = pdk.Layer(
             "ScatterplotLayer",
             venue_summary,
             get_position=["long", "lat"],
-            get_color="[29, 185, 84, 200]",
-            radius_min_pixels=6,   # Keeps dots readable when zoomed out
-            radius_max_pixels=25,  # Prevents massive green circle blobs when zoomed in
+            get_color="[29, 185, 84, 220]",
+            radius_min_pixels=8,
+            radius_max_pixels=25,
             get_radius="count * 100",
             pickable=True,
         )
 
+        # Permanent Venue Name Labels directly on the map
+        text_layer = pdk.Layer(
+            "TextLayer",
+            venue_summary,
+            get_position=["long", "lat"],
+            get_text="venue",
+            get_color="[255, 255, 255, 240]",
+            get_size=13,
+            get_alignment_baseline="'bottom'",
+            get_pixel_offset=[0, -12],
+            pickable=True
+        )
+
         st.pydeck_chart(pdk.Deck(
-            layers=[layer],
+            # Using 'carto-voyager' tiles displays full streets, parks, transit & neighborhoods
+            map_style="carto-voyager", 
+            layers=[scatter_layer, text_layer],
             initial_view_state=view_state,
             tooltip={
                 "html": "<b>{venue}</b><br/>"
                         "📍 {city}, {state}<br/>"
                         "🎟️ <b>Shows Attended:</b> {count}<br/>"
-                        "⭐ <b>Top Artists Seen:</b> {top_artists}"
+                        "⭐ <b>Top Artists:</b> {top_artists}"
             }
         ))
 
