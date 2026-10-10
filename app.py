@@ -651,23 +651,47 @@ with tab2:
         df_att['lat'] = pd.to_numeric(df_att['lat'], errors='coerce')
         df_att['long'] = pd.to_numeric(df_att['long'], errors='coerce')
         
-        # REFACTOR: Group same-day setlists at the same venue into 1 Concert Event
+        # Deduplicate same-day setlists at the same venue for high-level statistics
         df_concerts = df_att.groupby(
             ['eventDate_dt', 'Date', 'venue', 'city', 'state', 'lat', 'long', 'year'], 
             as_index=False
         ).agg({
-            'artist': lambda x: ", ".join(dict.fromkeys(x)), # Lists headliner + openers without duplicate names
-            'song_count': 'sum',                            # Total songs heard that night
+            'artist': lambda x: ", ".join(dict.fromkeys(x)), # Headliners + Openers
+            'song_count': 'sum',
             'tour': lambda x: next((str(t) for t in x if pd.notna(t) and str(t).strip() not in ['None', '']), 'N/A'),
             'url': 'first'
         }).sort_values('eventDate_dt', ascending=False)
         
-        return df_att, df_concerts
+        # Parse individual song names from JSON column
+        all_songs = []
+        for idx, row in df_att.iterrows():
+            artist_name = row['artist']
+            song_json = row.get('songs')
+            v_name = row['venue']
+            d_str = row['Date']
+            if pd.notna(song_json):
+                try:
+                    s_list = json.loads(song_json)
+                    for s in s_list:
+                        if s and isinstance(s, str) and s.strip():
+                            all_songs.append({
+                                'song': s.strip(),
+                                'artist': artist_name,
+                                'venue': v_name,
+                                'Date': d_str,
+                                'track_artist': f"{s.strip()} — {artist_name}"
+                            })
+                except Exception:
+                    pass
+
+        df_songs = pd.DataFrame(all_songs) if all_songs else pd.DataFrame(columns=['song', 'artist', 'venue', 'Date', 'track_artist'])
+        
+        return df_att, df_concerts, df_songs
 
     try:
-        df_att, df_concerts = load_attendance()
+        df_att, df_concerts, df_songs = load_attendance()
 
-        # 1. Top Key Metric Cards (Refactored to Concert Events)
+        # 1. Top Key Metric Cards
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Concerts", len(df_concerts))
         col2.metric("Unique Artists", df_att['artist'].nunique())
@@ -708,7 +732,6 @@ with tab2:
 
         map_data = df_concerts.dropna(subset=['lat', 'long']).copy()
 
-        # Aggregate venue stats and top performers seen at each venue
         def agg_venue(g):
             top_3 = ", ".join(g['artist'].value_counts().head(3).index)
             return pd.Series({
@@ -722,7 +745,6 @@ with tab2:
         coords_df = map_data[['venue', 'lat', 'long']].drop_duplicates(subset=['venue'])
         venue_summary = venue_summary.merge(coords_df, on='venue', how='left')
 
-        # Version-safe Plotly Map function (scatter_map in v6+, scatter_mapbox in v5)
         map_fn = getattr(px, "scatter_map", getattr(px, "scatter_mapbox", None))
         
         map_kwargs = {
@@ -746,7 +768,6 @@ with tab2:
             "height": 520
         }
 
-        # Carto-Darkmatter provides ultra-high contrast for green dots on dark street tiles
         if hasattr(px, "scatter_map"):
             map_kwargs["map_style"] = "carto-darkmatter"
         else:
@@ -767,7 +788,90 @@ with tab2:
 
         st.plotly_chart(fig_map, use_container_width=True)
 
-        # 4. Interactive Venue Inspector Dropdown
+        st.divider()
+
+        # 4. Song Analytics: Most Heard Songs & Deep Cuts
+        if not df_songs.empty:
+            st.subheader("🎵 Song Analytics")
+            
+            s_col1, s_col2 = st.columns(2)
+            
+            with s_col1:
+                st.markdown("### Most Heard Tracks Live")
+                top_tracks = df_songs.groupby(['song', 'artist', 'track_artist']).size().reset_index(name='Times Heard').sort_values('Times Heard', ascending=False)
+                top15_tracks = top_tracks.head(15)
+                
+                fig_top_songs = px.bar(
+                    top15_tracks, x='Times Heard', y='track_artist', orientation='h', text='Times Heard',
+                    color_discrete_sequence=['#1DB954']
+                )
+                fig_top_songs.update_layout(yaxis=dict(autorange="reversed"), xaxis_title="Times Heard Live", yaxis_title="")
+                st.plotly_chart(fig_top_songs, use_container_width=True)
+
+            with s_col2:
+                st.markdown("### Deep Cuts Index (Rare Live Tracks)")
+                st.caption("Tracks witnessed live only **once** for artists you've seen multiple times:")
+                
+                top_seen_artists = df_att['artist'].value_counts()
+                artists_multi = top_seen_artists[top_seen_artists >= 2].index.tolist()
+                
+                deep_cuts_df = top_tracks[(top_tracks['Times Heard'] == 1) & (top_tracks['artist'].isin(artists_multi))]
+                
+                selected_deep_artist = st.selectbox(
+                    "Filter rare songs by artist:", 
+                    ["All Top Artists"] + sorted(artists_multi)
+                )
+                
+                if selected_deep_artist != "All Top Artists":
+                    filtered_cuts = deep_cuts_df[deep_cuts_df['artist'] == selected_deep_artist]
+                else:
+                    filtered_cuts = deep_cuts_df
+
+                st.dataframe(
+                    filtered_cuts[['song', 'artist']],
+                    column_config={
+                        "song": "Rare Track Name",
+                        "artist": "Artist"
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                    height=380
+                )
+
+            st.divider()
+
+        # 5. Full Attendance History Log (Individual Performer Rows preserved)
+        st.subheader("Full Attendance History Log")
+        st.caption("Individual setlists logged for each performer:")
+        
+        # Sort individual setlists descending by date
+        df_att_sorted = df_att.sort_values('eventDate_dt', ascending=False)
+        
+        display_cols = ['Date', 'artist', 'venue', 'city', 'state', 'tour', 'song_count']
+        column_configs = {
+            "Date": st.column_config.TextColumn("Date"),
+            "artist": st.column_config.TextColumn("Performer"),
+            "venue": st.column_config.TextColumn("Venue"),
+            "city": st.column_config.TextColumn("City"),
+            "state": st.column_config.TextColumn("State"),
+            "tour": st.column_config.TextColumn("Tour"),
+            "song_count": st.column_config.NumberColumn("Songs"),
+        }
+
+        if 'url' in df_att_sorted.columns:
+            display_cols.append('url')
+            column_configs["url"] = st.column_config.LinkColumn("Setlist Link", display_text="View Setlist 🔗")
+
+        st.dataframe(
+            df_att_sorted[display_cols],
+            column_config=column_configs,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.divider()
+
+        # 6. Interactive Venue Inspector Dropdown (MOVED BELOW LOG)
         st.markdown("### 🔍 Venue Inspector")
         venue_list = sorted(venue_summary['venue'].unique())
         default_idx = venue_list.index("Madison Square Garden") if "Madison Square Garden" in venue_list else 0
@@ -793,32 +897,6 @@ with tab2:
                 use_container_width=True,
                 hide_index=True
             )
-
-        # 5. Complete Concert Event Log Table
-        st.divider()
-        st.subheader("Full Concert History Log")
-        
-        display_cols = ['Date', 'artist', 'venue', 'city', 'state', 'tour', 'song_count']
-        column_configs = {
-            "Date": st.column_config.TextColumn("Date"),
-            "artist": st.column_config.TextColumn("Artist(s) Performed"),
-            "venue": st.column_config.TextColumn("Venue"),
-            "city": st.column_config.TextColumn("City"),
-            "state": st.column_config.TextColumn("State"),
-            "tour": st.column_config.TextColumn("Tour"),
-            "song_count": st.column_config.NumberColumn("Total Songs"),
-        }
-
-        if 'url' in df_concerts.columns:
-            display_cols.append('url')
-            column_configs["url"] = st.column_config.LinkColumn("Setlist Link", display_text="View Setlist 🔗")
-
-        st.dataframe(
-            df_concerts[display_cols],
-            column_config=column_configs,
-            use_container_width=True,
-            hide_index=True
-        )
 
     except FileNotFoundError:
         st.warning("`attended_shows.csv` not found in project directory.")
