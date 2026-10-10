@@ -633,59 +633,84 @@ with tab1:
                     st.dataframe(report_df, use_container_width=True)
 
 
-# Helper Function for Global Setlist.fm Career Statistics
+# ==========================================
+# HELPER: GLOBAL SETLIST.FM CAREER STATS
+# ==========================================
 @st.cache_data(ttl=86400)  # Caches stats for 24 hours
 def get_global_artist_stats(artist_name, api_key=""):
-    """Fetches an artist's total career concerts & song play counts directly from Setlist.fm."""
-    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+    """Fetches an artist's total career setlists & global song play counts directly from Setlist.fm."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
     
-    try:
-        # 1. Search MBID via API if key is available, else slugify name
-        mbid = ""
-        if api_key:
+    stats_url = None
+    mbid = ""
+    
+    # 1. Obtain canonical URL from Setlist.fm API
+    if api_key:
+        try:
             api_headers = {"x-api-key": api_key, "Accept": "application/json"}
             search_url = f"https://api.setlist.fm/rest/1.0/search/artists?artistName={requests.utils.quote(artist_name)}&sort=relevance"
             resp = requests.get(search_url, headers=api_headers, timeout=5)
             if resp.status_code == 200:
                 artists = resp.json().get("artist", [])
                 if artists:
-                    mbid = artists[0].get("mbid", "")
+                    top_artist = artists[0]
+                    mbid = top_artist.get("mbid", "")
+                    artist_url = top_artist.get("url", "")
+                    if "/setlists/" in artist_url:
+                        # Convert /setlists/ URL to canonical /stats/ URL
+                        stats_url = artist_url.replace("/setlists/", "/stats/")
+        except Exception:
+            pass
 
-        slug = re.sub(r'[^a-zA-Z0-9\s-]', '', artist_name).strip().lower().replace(" ", "-")
-        if mbid:
-            stats_url = f"https://www.setlist.fm/stats/{slug}-{mbid}.html"
-        else:
-            stats_url = f"https://www.setlist.fm/stats/{slug}.html"
+    # 2. Candidate URLs if API search URL is unavailable
+    candidate_urls = []
+    if stats_url:
+        candidate_urls.append(stats_url)
+    if mbid:
+        candidate_urls.append(f"https://www.setlist.fm/stats/artist/{mbid}")
+    
+    slug = re.sub(r'[^a-zA-Z0-9\s-]', '', artist_name).strip().lower().replace(" ", "-")
+    candidate_urls.append(f"https://www.setlist.fm/stats/{slug}.html")
 
-        web_resp = requests.get(stats_url, headers=headers, timeout=5)
-        if web_resp.status_code != 200:
-            return None, {}
+    html_text = None
+    for url in candidate_urls:
+        try:
+            res = requests.get(url, headers=headers, timeout=5, allow_redirects=True)
+            if res.status_code == 200 and ("setlist" in res.text.lower() or "song" in res.text.lower()):
+                html_text = res.text
+                break
+        except Exception:
+            continue
 
-        html_text = web_resp.text
-
-        # Extract total career setlists count
-        shows_match = re.search(r'Setlists:\s*<b>(\d[\d,]*)</b>', html_text, re.IGNORECASE)
-        if not shows_match:
-            shows_match = re.search(r'(\d[\d,]*)\s+setlists', html_text, re.IGNORECASE)
-        
-        total_career_shows = int(shows_match.group(1).replace(',', '')) if shows_match else 100
-
-        # Extract song names and play counts
-        song_matches = re.findall(r'href="[^"]*song/[^"]*">([^<]+)</a>.*?<span[^>]*>(\d+)</span>', html_text, re.DOTALL)
-
-        global_song_stats = {}
-        for song_name, count in song_matches:
-            cnt = int(count)
-            pct = (cnt / total_career_shows) * 100.0
-            global_song_stats[song_name.strip().lower()] = {
-                'global_count': cnt,
-                'global_pct': pct
-            }
-
-        return total_career_shows, global_song_stats
-
-    except Exception:
+    if not html_text:
         return None, {}
+
+    # Extract total career setlists
+    shows_match = re.search(r'setlists?:?\s*<[^>]+>(\d[\d,]*)<', html_text, re.IGNORECASE)
+    if not shows_match:
+        shows_match = re.search(r'(\d[\d,]*)\s+setlists', html_text, re.IGNORECASE)
+    if not shows_match:
+        shows_match = re.search(r'Setlists:\s*<b>(\d[\d,]*)</b>', html_text, re.IGNORECASE)
+        
+    total_career_shows = int(shows_match.group(1).replace(',', '')) if shows_match else 100
+
+    # Extract song play counts
+    song_matches = re.findall(r'href="[^"]*/song/[^"]*">([^<]+)</a>.*?<span[^>]*>(\d+)</span>', html_text, re.DOTALL)
+    if not song_matches:
+        song_matches = re.findall(r'href="[^"]*/song/[^"]*">([^<]+)</a>.*?<td[^>]*>\s*(\d+)\s*</td>', html_text, re.DOTALL)
+
+    global_song_stats = {}
+    for song_name, count in song_matches:
+        cnt = int(count)
+        pct = (cnt / total_career_shows) * 100.0
+        global_song_stats[song_name.strip().lower()] = {
+            'global_count': cnt,
+            'global_pct': pct
+        }
+
+    return total_career_shows, global_song_stats
 
 
 # ==========================================
@@ -727,7 +752,6 @@ with tab2:
             if pd.notna(song_json):
                 try:
                     s_list = json.loads(song_json)
-                    # Deduplicate songs within each individual setlist
                     unique_songs = list(dict.fromkeys([s.strip() for s in s_list if s and isinstance(s, str) and s.strip()]))
                     for s in unique_songs:
                         all_songs.append({
@@ -766,37 +790,58 @@ with tab2:
                 yearly_counts, x='year', y='concerts', text='concerts',
                 color_discrete_sequence=['#1DB954']
             )
-            fig_year.update_layout(xaxis_title="Year", yaxis_title="Number of Concerts", height=420)
+            fig_year.update_layout(
+                xaxis_title="Year", 
+                yaxis_title="Number of Concerts", 
+                height=420,
+                margin=dict(l=10, r=10, t=10, b=10)
+            )
             st.plotly_chart(fig_year, use_container_width=True)
 
         with c2:
             st.subheader("Artists Seen > 1 Time")
             st.caption("📜 Scroll to explore every artist seen multiple times:")
             
-            # Filter every artist seen >= 2 times
-            artist_counts = df_att['artist'].value_counts()
-            multi_artists = artist_counts[artist_counts >= 2].reset_index()
-            multi_artists.columns = ['artist', 'count']
+            # Filter artists seen >= 2 times & calculate rank numbers with ties
+            artist_counts = df_att['artist'].value_counts().reset_index()
+            artist_counts.columns = ['artist', 'count']
+            multi_artists = artist_counts[artist_counts['count'] >= 2].copy()
             
+            multi_artists['rank_dense'] = multi_artists['count'].rank(method='min', ascending=False).astype(int)
+            rank_counts = multi_artists['rank_dense'].value_counts()
+
+            def format_rank_artist(row):
+                r = row['rank_dense']
+                is_tie = rank_counts[r] > 1
+                prefix = f"T-{r}." if is_tie else f"{r}."
+                return f"{prefix} {row['artist']}"
+
+            multi_artists['ranked_label'] = multi_artists.apply(format_rank_artist, axis=1)
+
             # Scrollable container for multi-seen artists
             with st.container(height=380):
                 fig_artists = px.bar(
-                    multi_artists, x='count', y='artist', orientation='h', text='count',
+                    multi_artists, x='count', y='ranked_label', orientation='h', text='count',
                     color_discrete_sequence=['#1DB954']
                 )
-                chart_h = max(360, len(multi_artists) * 26)
+                chart_h = max(360, len(multi_artists) * 28)
                 fig_artists.update_layout(
-                    yaxis=dict(autorange="reversed"), 
+                    yaxis=dict(autorange="reversed", automargin=True), 
                     xaxis_title="Times Seen", 
                     yaxis_title="",
                     height=chart_h,
-                    margin=dict(l=10, r=10, t=10, b=10)
+                    margin=dict(l=0, r=10, t=10, b=10) # Set left margin to 0 for left alignment
+                )
+                fig_artists.update_traces(
+                    textposition='inside',
+                    texttemplate='%{text}',
+                    insidetextanchor='end'
                 )
                 st.plotly_chart(fig_artists, use_container_width=True)
 
         st.divider()
 
-        # 3. High-Contrast Dark Map Box (Extreme Zoom Visibility)
+        # 3. Geographic Footprint Map
         st.subheader("Geographic Footprint")
         st.caption("💡 Hover over or click any green pin to view venue stats!")
 
@@ -886,10 +931,8 @@ with tab2:
                 selected_deep_artist = st.selectbox("Select artist to analyze global career rarity:", artist_list)
                 
                 if selected_deep_artist:
-                    # User's attended tracks for this artist
                     user_artist_songs = df_songs[df_songs['artist'] == selected_deep_artist]['song'].unique().tolist()
                     
-                    # Fetch global stats for this artist
                     api_key = st.secrets.get("SETLIST_API_KEY", "")
                     total_career_shows, global_stats = get_global_artist_stats(selected_deep_artist, api_key)
                     
@@ -902,9 +945,8 @@ with tab2:
                                 g_pct = s_info['global_pct']
                                 g_cnt = s_info['global_count']
                             else:
-                                # Very rare song not in top setlist stats or special version
-                                g_pct = 5.0
-                                g_cnt = 1
+                                g_pct = 2.0
+                                g_cnt = 5
                                 
                             if g_pct < 25.0:
                                 deep_cut_rows.append({
@@ -921,7 +963,14 @@ with tab2:
                             deep_cuts_table = deep_cuts_table.sort_values("Global Play Count")
                             st.success(f"Found {len(deep_cuts_table)} rare tracks (<25% global frequency) across {total_career_shows} total career concerts by **{selected_deep_artist}**!")
                             st.dataframe(
-                                deep_cuts_table[['Track Title', 'Global Play Count', 'Total Career Shows', 'Global Play Frequency']],
+                                deep_cuts_table[['Track Title', 'Artist', 'Global Play Count', 'Total Career Shows', 'Global Play Frequency']],
+                                column_config={
+                                    "Track Title": "Track Title",
+                                    "Artist": "Artist",
+                                    "Global Play Count": "Global Play Count",
+                                    "Total Career Shows": "Total Career Shows",
+                                    "Global Play Frequency": "Global Play Frequency (%)"
+                                },
                                 use_container_width=True,
                                 hide_index=True,
                                 height=300
@@ -929,7 +978,6 @@ with tab2:
                         else:
                             st.info(f"All tracks witnessed live for **{selected_deep_artist}** are staple tour songs played in >25% of their global concerts!")
                     else:
-                        # Fallback to local personal frequency if web stats are unreachable
                         local_artist_shows = df_att[df_att['artist'] == selected_deep_artist]['eventDate_dt'].nunique()
                         local_counts = df_songs[df_songs['artist'] == selected_deep_artist]['song'].value_counts()
                         
@@ -947,12 +995,10 @@ with tab2:
                         fallback_table = pd.DataFrame(deep_cut_rows)
                         if not fallback_table.empty:
                             st.dataframe(fallback_table, use_container_width=True, hide_index=True, height=300)
-                        else:
-                            st.info(f"No deep cuts (<25% play frequency) found for {selected_deep_artist}.")
 
             st.divider()
 
-        # 5. Full Attendance History Log (Individual Performer Rows preserved)
+        # 5. Full Attendance History Log
         st.subheader("Full Attendance History Log")
         st.caption("Individual setlists logged for each performer:")
         
@@ -982,7 +1028,7 @@ with tab2:
 
         st.divider()
 
-        # 6. Interactive Venue Inspector Dropdown (Below Log)
+        # 6. Interactive Venue Inspector Dropdown
         st.markdown("### 🔍 Venue Inspector")
         venue_list = sorted(venue_summary['venue'].unique())
         default_idx = venue_list.index("Madison Square Garden") if "Madison Square Garden" in venue_list else 0
