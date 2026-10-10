@@ -691,7 +691,7 @@ with tab2:
 
         st.divider()
 
-        # 3. High-Detail Venue Map with Guaranteed Tiles & Rich Hover Tooltips
+        # 3. High-Detail Venue Map with Dark Text Labels & Voyager Base Map
         st.subheader("Geographic Footprint")
         map_data = df_att.dropna(subset=['lat', 'long']).copy()
         
@@ -710,22 +710,36 @@ with tab2:
             pitch=0
         )
 
-        # Crisp Pin Dots Layer
+        # Pin Dots Layer
         scatter_layer = pdk.Layer(
             "ScatterplotLayer",
             venue_summary,
             get_position=["long", "lat"],
-            get_color="[29, 185, 84, 210]",
+            get_color="[29, 185, 84, 220]",
             radius_min_pixels=7,
-            radius_max_pixels=22,
+            radius_max_pixels=20,
             get_radius="count * 100",
             pickable=True,
         )
 
+        # Visible Venue Name Labels (Dark text for light map background)
+        text_layer = pdk.Layer(
+            "TextLayer",
+            venue_summary,
+            get_position=["long", "lat"],
+            get_text="venue",
+            get_color="[20, 20, 20, 255]",  # Dark charcoal text
+            get_size=12,
+            get_angle=0,
+            get_text_anchor="'middle'",
+            get_alignment_baseline="'bottom'",
+            get_pixel_offset=[0, -12],     # Positioned right above the dot
+            pickable=True
+        )
+
         st.pydeck_chart(pdk.Deck(
-            # Direct CARTO GL Voyager style URL (includes streets, parks, and city labels)
             map_style="https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
-            layers=[scatter_layer],
+            layers=[scatter_layer, text_layer],
             initial_view_state=view_state,
             tooltip={
                 "html": "<div style='font-family: sans-serif; padding: 4px;'>"
