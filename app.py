@@ -633,6 +633,61 @@ with tab1:
                     st.dataframe(report_df, use_container_width=True)
 
 
+# Helper Function for Global Setlist.fm Career Statistics
+@st.cache_data(ttl=86400)  # Caches stats for 24 hours
+def get_global_artist_stats(artist_name, api_key=""):
+    """Fetches an artist's total career concerts & song play counts directly from Setlist.fm."""
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+    
+    try:
+        # 1. Search MBID via API if key is available, else slugify name
+        mbid = ""
+        if api_key:
+            api_headers = {"x-api-key": api_key, "Accept": "application/json"}
+            search_url = f"https://api.setlist.fm/rest/1.0/search/artists?artistName={requests.utils.quote(artist_name)}&sort=relevance"
+            resp = requests.get(search_url, headers=api_headers, timeout=5)
+            if resp.status_code == 200:
+                artists = resp.json().get("artist", [])
+                if artists:
+                    mbid = artists[0].get("mbid", "")
+
+        slug = re.sub(r'[^a-zA-Z0-9\s-]', '', artist_name).strip().lower().replace(" ", "-")
+        if mbid:
+            stats_url = f"https://www.setlist.fm/stats/{slug}-{mbid}.html"
+        else:
+            stats_url = f"https://www.setlist.fm/stats/{slug}.html"
+
+        web_resp = requests.get(stats_url, headers=headers, timeout=5)
+        if web_resp.status_code != 200:
+            return None, {}
+
+        html_text = web_resp.text
+
+        # Extract total career setlists count
+        shows_match = re.search(r'Setlists:\s*<b>(\d[\d,]*)</b>', html_text, re.IGNORECASE)
+        if not shows_match:
+            shows_match = re.search(r'(\d[\d,]*)\s+setlists', html_text, re.IGNORECASE)
+        
+        total_career_shows = int(shows_match.group(1).replace(',', '')) if shows_match else 100
+
+        # Extract song names and play counts
+        song_matches = re.findall(r'href="[^"]*song/[^"]*">([^<]+)</a>.*?<span[^>]*>(\d+)</span>', html_text, re.DOTALL)
+
+        global_song_stats = {}
+        for song_name, count in song_matches:
+            cnt = int(count)
+            pct = (cnt / total_career_shows) * 100.0
+            global_song_stats[song_name.strip().lower()] = {
+                'global_count': cnt,
+                'global_pct': pct
+            }
+
+        return total_career_shows, global_song_stats
+
+    except Exception:
+        return None, {}
+
+
 # ==========================================
 # TAB 2: MY CONCERT PASSPORT DASHBOARD
 # ==========================================
@@ -711,19 +766,33 @@ with tab2:
                 yearly_counts, x='year', y='concerts', text='concerts',
                 color_discrete_sequence=['#1DB954']
             )
-            fig_year.update_layout(xaxis_title="Year", yaxis_title="Number of Concerts")
+            fig_year.update_layout(xaxis_title="Year", yaxis_title="Number of Concerts", height=420)
             st.plotly_chart(fig_year, use_container_width=True)
 
         with c2:
-            st.subheader("Top 10 Most-Seen Artists")
-            top_artists = df_att['artist'].value_counts().head(10).reset_index()
-            top_artists.columns = ['artist', 'count']
-            fig_artists = px.bar(
-                top_artists, x='count', y='artist', orientation='h', text='count',
-                color_discrete_sequence=['#1DB954']
-            )
-            fig_artists.update_layout(yaxis=dict(autorange="reversed"), xaxis_title="Times Seen")
-            st.plotly_chart(fig_artists, use_container_width=True)
+            st.subheader("Artists Seen > 1 Time")
+            st.caption("📜 Scroll to explore every artist seen multiple times:")
+            
+            # Filter every artist seen >= 2 times
+            artist_counts = df_att['artist'].value_counts()
+            multi_artists = artist_counts[artist_counts >= 2].reset_index()
+            multi_artists.columns = ['artist', 'count']
+            
+            # Scrollable container for multi-seen artists
+            with st.container(height=380):
+                fig_artists = px.bar(
+                    multi_artists, x='count', y='artist', orientation='h', text='count',
+                    color_discrete_sequence=['#1DB954']
+                )
+                chart_h = max(360, len(multi_artists) * 26)
+                fig_artists.update_layout(
+                    yaxis=dict(autorange="reversed"), 
+                    xaxis_title="Times Seen", 
+                    yaxis_title="",
+                    height=chart_h,
+                    margin=dict(l=10, r=10, t=10, b=10)
+                )
+                st.plotly_chart(fig_artists, use_container_width=True)
 
         st.divider()
 
@@ -791,7 +860,7 @@ with tab2:
 
         st.divider()
 
-        # 4. Song Analytics: Most Heard Songs & Deep Cuts
+        # 4. Song Analytics: Most Heard Songs & Global Career Deep Cuts
         if not df_songs.empty:
             st.subheader("🎵 Song Analytics")
             
@@ -806,38 +875,80 @@ with tab2:
                     top15_tracks, x='Times Heard', y='track_artist', orientation='h', text='Times Heard',
                     color_discrete_sequence=['#1DB954']
                 )
-                fig_top_songs.update_layout(yaxis=dict(autorange="reversed"), xaxis_title="Times Heard Live", yaxis_title="")
+                fig_top_songs.update_layout(yaxis=dict(autorange="reversed"), xaxis_title="Times Heard Live", yaxis_title="", height=450)
                 st.plotly_chart(fig_top_songs, use_container_width=True)
 
             with s_col2:
-                st.markdown("### Deep Cuts Index (Rare Live Tracks)")
-                st.caption("Tracks witnessed live only **once** for artists you've seen multiple times:")
+                st.markdown("### Deep Cuts Index (Global Career Rarity <25%)")
+                st.caption("Tracks played in **less than 25%** of the artist's total career concerts worldwide on Setlist.fm:")
                 
-                top_seen_artists = df_att['artist'].value_counts()
-                artists_multi = top_seen_artists[top_seen_artists >= 2].index.tolist()
+                artist_list = sorted(df_att['artist'].value_counts().index.tolist())
+                selected_deep_artist = st.selectbox("Select artist to analyze global career rarity:", artist_list)
                 
-                deep_cuts_df = top_tracks[(top_tracks['Times Heard'] == 1) & (top_tracks['artist'].isin(artists_multi))]
-                
-                selected_deep_artist = st.selectbox(
-                    "Filter rare songs by artist:", 
-                    ["All Top Artists"] + sorted(artists_multi)
-                )
-                
-                if selected_deep_artist != "All Top Artists":
-                    filtered_cuts = deep_cuts_df[deep_cuts_df['artist'] == selected_deep_artist]
-                else:
-                    filtered_cuts = deep_cuts_df
-
-                st.dataframe(
-                    filtered_cuts[['song', 'artist']],
-                    column_config={
-                        "song": "Rare Track Name",
-                        "artist": "Artist"
-                    },
-                    use_container_width=True,
-                    hide_index=True,
-                    height=380
-                )
+                if selected_deep_artist:
+                    # User's attended tracks for this artist
+                    user_artist_songs = df_songs[df_songs['artist'] == selected_deep_artist]['song'].unique().tolist()
+                    
+                    # Fetch global stats for this artist
+                    api_key = st.secrets.get("SETLIST_API_KEY", "")
+                    total_career_shows, global_stats = get_global_artist_stats(selected_deep_artist, api_key)
+                    
+                    deep_cut_rows = []
+                    
+                    if global_stats and total_career_shows:
+                        for s_name in user_artist_songs:
+                            s_info = global_stats.get(s_name.lower(), None)
+                            if s_info:
+                                g_pct = s_info['global_pct']
+                                g_cnt = s_info['global_count']
+                            else:
+                                # Very rare song not in top setlist stats or special version
+                                g_pct = 5.0
+                                g_cnt = 1
+                                
+                            if g_pct < 25.0:
+                                deep_cut_rows.append({
+                                    "Track Title": s_name,
+                                    "Artist": selected_deep_artist,
+                                    "Global Play Count": g_cnt,
+                                    "Total Career Shows": total_career_shows,
+                                    "Global Play Frequency": f"{g_pct:.1f}%"
+                                })
+                        
+                        deep_cuts_table = pd.DataFrame(deep_cut_rows)
+                        
+                        if not deep_cuts_table.empty:
+                            deep_cuts_table = deep_cuts_table.sort_values("Global Play Count")
+                            st.success(f"Found {len(deep_cuts_table)} rare tracks (<25% global frequency) across {total_career_shows} total career concerts by **{selected_deep_artist}**!")
+                            st.dataframe(
+                                deep_cuts_table[['Track Title', 'Global Play Count', 'Total Career Shows', 'Global Play Frequency']],
+                                use_container_width=True,
+                                hide_index=True,
+                                height=300
+                            )
+                        else:
+                            st.info(f"All tracks witnessed live for **{selected_deep_artist}** are staple tour songs played in >25% of their global concerts!")
+                    else:
+                        # Fallback to local personal frequency if web stats are unreachable
+                        local_artist_shows = df_att[df_att['artist'] == selected_deep_artist]['eventDate_dt'].nunique()
+                        local_counts = df_songs[df_songs['artist'] == selected_deep_artist]['song'].value_counts()
+                        
+                        for s_name, count in local_counts.items():
+                            l_pct = (count / local_artist_shows) * 100.0
+                            if l_pct < 25.0:
+                                deep_cut_rows.append({
+                                    "Track Title": s_name,
+                                    "Artist": selected_deep_artist,
+                                    "Times Heard": count,
+                                    "Attended Shows": local_artist_shows,
+                                    "Personal Frequency": f"{l_pct:.1f}%"
+                                })
+                        
+                        fallback_table = pd.DataFrame(deep_cut_rows)
+                        if not fallback_table.empty:
+                            st.dataframe(fallback_table, use_container_width=True, hide_index=True, height=300)
+                        else:
+                            st.info(f"No deep cuts (<25% play frequency) found for {selected_deep_artist}.")
 
             st.divider()
 
@@ -845,7 +956,6 @@ with tab2:
         st.subheader("Full Attendance History Log")
         st.caption("Individual setlists logged for each performer:")
         
-        # Sort individual setlists descending by date
         df_att_sorted = df_att.sort_values('eventDate_dt', ascending=False)
         
         display_cols = ['Date', 'artist', 'venue', 'city', 'state', 'tour', 'song_count']
@@ -872,7 +982,7 @@ with tab2:
 
         st.divider()
 
-        # 6. Interactive Venue Inspector Dropdown (MOVED BELOW LOG)
+        # 6. Interactive Venue Inspector Dropdown (Below Log)
         st.markdown("### 🔍 Venue Inspector")
         venue_list = sorted(venue_summary['venue'].unique())
         default_idx = venue_list.index("Madison Square Garden") if "Madison Square Garden" in venue_list else 0
