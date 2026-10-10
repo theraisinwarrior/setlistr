@@ -1,9 +1,7 @@
-"""Setlist.fm API access and the (fragile) career-stats page scrape."""
-import re
+"""Setlist.fm API access."""
 import time
 
 import requests
-import streamlit as st
 
 API_BASE = "https://api.setlist.fm/rest/1.0"
 TIMEOUT = 10
@@ -117,80 +115,3 @@ def fetch_setlists(artist_mbid: str, api_key: str, max_shows: int,
         time.sleep(0.3)
 
     return fetched
-
-
-@st.cache_data(ttl=86400)  # cache career stats for 24 hours
-def get_global_artist_stats(artist_name: str, api_key: str = ""):
-    """Scrape an artist's career setlist count and per-song play counts.
-
-    NOTE: this parses setlist.fm HTML with regexes and can break if the page
-    changes. Phase 3 plan: replace with frequencies computed from API data.
-    Returns (total_career_shows | None, {song_lower: {...}}).
-    """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-
-    stats_url = None
-    mbid = ""
-
-    if api_key:
-        try:
-            search_url = f"{API_BASE}/search/artists?artistName={requests.utils.quote(artist_name)}&sort=relevance"
-            resp = requests.get(search_url, headers=_headers(api_key), timeout=5)
-            if resp.status_code == 200:
-                artists = resp.json().get("artist", [])
-                if artists:
-                    top = artists[0]
-                    mbid = top.get("mbid", "")
-                    artist_url = top.get("url", "")
-                    if "/setlists/" in artist_url:
-                        stats_url = artist_url.replace("/setlists/", "/stats/")
-        except Exception:
-            pass
-
-    candidate_urls = []
-    if stats_url:
-        candidate_urls.append(stats_url)
-    if mbid:
-        candidate_urls.append(f"https://www.setlist.fm/stats/artist/{mbid}")
-    slug = re.sub(r"[^a-zA-Z0-9\s-]", "", artist_name).strip().lower().replace(" ", "-")
-    candidate_urls.append(f"https://www.setlist.fm/stats/{slug}.html")
-
-    html_text = None
-    for url in candidate_urls:
-        try:
-            res = requests.get(url, headers=headers, timeout=5, allow_redirects=True)
-            if res.status_code == 200 and ("setlist" in res.text.lower() or "song" in res.text.lower()):
-                html_text = res.text
-                break
-        except Exception:
-            continue
-
-    if not html_text:
-        return None, {}
-
-    shows_match = re.search(r"setlists?:?\s*<[^>]+>(\d[\d,]*)<", html_text, re.IGNORECASE)
-    if not shows_match:
-        shows_match = re.search(r"(\d[\d,]*)\s+setlists", html_text, re.IGNORECASE)
-    if not shows_match:
-        shows_match = re.search(r"Setlists:\s*<b>(\d[\d,]*)</b>", html_text, re.IGNORECASE)
-
-    total_career_shows = int(shows_match.group(1).replace(",", "")) if shows_match else 100
-
-    song_matches = re.findall(
-        r'href="[^"]*/song/[^"]*">([^<]+)</a>.*?<span[^>]*>(\d+)</span>', html_text, re.DOTALL)
-    if not song_matches:
-        song_matches = re.findall(
-            r'href="[^"]*/song/[^"]*">([^<]+)</a>.*?<td[^>]*>\s*(\d+)\s*</td>', html_text, re.DOTALL)
-
-    stats = {}
-    for song_name, count in song_matches:
-        cnt = int(count)
-        stats[song_name.strip().lower()] = {
-            "global_count": cnt,
-            "global_pct": (cnt / total_career_shows) * 100.0,
-        }
-
-    return total_career_shows, stats

@@ -3,7 +3,7 @@ import json
 
 import pandas as pd
 
-RAW_COLUMNS = ["eventDate", "artist", "venue", "city", "state", "lat", "long",
+RAW_COLUMNS = ["eventDate", "artist", "artist_mbid", "venue", "city", "state", "lat", "long",
                "song_count", "tour", "url", "songs"]
 
 
@@ -74,6 +74,7 @@ def setlists_to_dataframe(setlists: list) -> pd.DataFrame:
         rows.append({
             "eventDate": event_date.strftime("%Y-%m-%d") if pd.notna(event_date) else None,
             "artist": (sl.get("artist") or {}).get("name", "Unknown"),
+            "artist_mbid": (sl.get("artist") or {}).get("mbid"),
             "venue": venue.get("name", "Unknown venue"),
             "city": city.get("name", ""),
             "state": city.get("stateCode") or country.get("code") or "",
