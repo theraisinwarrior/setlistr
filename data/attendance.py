@@ -4,7 +4,7 @@ import json
 import pandas as pd
 
 RAW_COLUMNS = ["eventDate", "artist", "artist_mbid", "venue", "city", "state", "lat", "long",
-               "song_count", "tour", "url", "songs"]
+               "song_count", "tour", "url", "songs", "covers"]
 
 
 def _norm(value) -> str:
@@ -61,12 +61,15 @@ def setlists_to_dataframe(setlists: list) -> pd.DataFrame:
         coords = city.get("coords") or {}
         country = city.get("country") or {}
 
-        songs = []
+        songs, covers = [], []
         for s in (sl.get("sets") or {}).get("set", []):
             for song in s.get("song", []):
                 name = song.get("name")
                 if name and not song.get("tape", False):
                     songs.append(name)
+                    original = (song.get("cover") or {}).get("name")
+                    if original:
+                        covers.append({"song": name, "original": original})
 
         raw_date = sl.get("eventDate", "")  # setlist.fm uses dd-MM-yyyy
         event_date = pd.to_datetime(raw_date, format="%d-%m-%Y", errors="coerce")
@@ -84,6 +87,7 @@ def setlists_to_dataframe(setlists: list) -> pd.DataFrame:
             "tour": (sl.get("tour") or {}).get("name"),
             "url": sl.get("url", ""),
             "songs": json.dumps(songs),
+            "covers": json.dumps(covers),
         })
 
     return pd.DataFrame(rows, columns=RAW_COLUMNS)
@@ -134,3 +138,35 @@ def process_attendance(df_raw: pd.DataFrame):
                 else pd.DataFrame(columns=['song', 'artist', 'venue', 'Date', 'track_artist']))
 
     return df_att, df_concerts, df_songs
+
+
+COVER_COLUMNS = ["Song", "Original Artist", "Performed By", "Date", "Venue", "eventDate_dt"]
+
+
+def extract_covers(df_att: pd.DataFrame) -> pd.DataFrame:
+    """One row per cover song heard live. Empty if the data has no cover info
+    (for example the old CSV fallback)."""
+    if df_att is None or df_att.empty or "covers" not in df_att.columns:
+        return pd.DataFrame(columns=COVER_COLUMNS)
+
+    rows = []
+    for _, row in df_att.iterrows():
+        raw = row.get("covers")
+        if pd.isna(raw):
+            continue
+        try:
+            items = json.loads(raw)
+        except Exception:
+            continue
+        for item in items:
+            rows.append({
+                "Song": item.get("song"),
+                "Original Artist": item.get("original"),
+                "Performed By": row["artist"],
+                "Date": row["Date"],
+                "Venue": row["venue"],
+                "eventDate_dt": row["eventDate_dt"],
+            })
+
+    df = pd.DataFrame(rows, columns=COVER_COLUMNS)
+    return df.sort_values("eventDate_dt", ascending=False).reset_index(drop=True)

@@ -72,3 +72,23 @@ def test_highlights_and_badges():
 
 def test_highlights_empty():
     assert compute_highlights(pd.DataFrame(), pd.DataFrame(), pd.DataFrame()) == {}
+
+
+def test_extract_covers():
+    from data.attendance import extract_covers, setlists_to_dataframe
+    setlists = [{
+        "eventDate": "15-03-2024", "artist": {"name": "Band A"},
+        "venue": {"name": "MSG", "city": {"name": "New York"}},
+        "sets": {"set": [{"song": [
+            {"name": "Original Song"},
+            {"name": "Come Together", "cover": {"name": "The Beatles"}},
+            {"name": "Tape Cover", "tape": True, "cover": {"name": "Nobody"}},
+        ]}]},
+    }]
+    df_att, _, _ = process_attendance(setlists_to_dataframe(setlists))
+    covers = extract_covers(df_att)
+    assert len(covers) == 1
+    row = covers.iloc[0]
+    assert (row["Song"], row["Original Artist"], row["Performed By"]) == ("Come Together", "The Beatles", "Band A")
+    # data without cover info (the old CSV) yields an empty table instead of crashing
+    assert extract_covers(df_att.drop(columns="covers")).empty

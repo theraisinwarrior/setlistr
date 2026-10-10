@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from data.attendance import apply_venue_overrides, process_attendance
+from data.attendance import apply_venue_overrides, extract_covers, process_attendance
 from analytics.deep_cuts import deep_cuts_table, song_frequency
 from analytics.passport_stats import compute_highlights
 from data.store import (clear_sync_cache, get_artist_recent_setlists, load_csv_attendance,
@@ -58,11 +58,15 @@ try:
     df_att, df_concerts, df_songs = process_attendance(raw_attendance)
 
     # 1. Key metric cards
-    col1, col2, col3, col4 = st.columns(4)
+    total_sets = len(df_att[['eventDate_dt', 'venue', 'artist']].drop_duplicates())
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Concerts", len(df_concerts))
-    col2.metric("Unique Artists", df_att['artist'].nunique())
-    col3.metric("Venues Visited", df_concerts['venue'].nunique())
-    col4.metric("Cities Visited", df_concerts['city'].nunique())
+    col2.metric("Total Sets Seen", total_sets,
+                help="Every performer's set you've watched. Openers and headliners each count, "
+                     "so a night with 3 acts is 1 concert but 3 sets.")
+    col3.metric("Unique Artists", df_att['artist'].nunique())
+    col4.metric("Venues Visited", df_concerts['venue'].nunique())
+    col5.metric("Cities Visited", df_concerts['city'].nunique())
 
     # 1b. Highlights & badges
     hl = compute_highlights(df_att, df_concerts, df_songs)
@@ -113,35 +117,30 @@ try:
         st.plotly_chart(fig_year, use_container_width=True)
 
     with c2:
-        st.subheader("Artists Seen > 1 Time")
-        st.caption("📜 Scroll to explore every artist seen multiple times:")
+        st.subheader("🎤 Repeat Artists")
 
         artist_counts = df_att['artist'].value_counts().reset_index()
         artist_counts.columns = ['artist', 'count']
-        multi_artists = artist_counts[artist_counts['count'] >= 2].copy()
+        multi_artists = (artist_counts[artist_counts['count'] >= 2]
+                         .sort_values(['count', 'artist'], ascending=[False, True]))
 
-        multi_artists['rank_dense'] = multi_artists['count'].rank(method='min', ascending=False).astype(int)
-        rank_counts = multi_artists['rank_dense'].value_counts()
-
-        def format_rank_artist(row):
-            r = row['rank_dense']
-            prefix = f"T-{r}." if rank_counts[r] > 1 else f"{r}."
-            return f"{prefix} {row['artist']}"
-
-        multi_artists['ranked_label'] = multi_artists.apply(format_rank_artist, axis=1)
-
-        with st.container(height=380):
-            fig_artists = px.bar(multi_artists, x='count', y='ranked_label', orientation='h',
-                                 text='count', color_discrete_sequence=[SPOTIFY_GREEN])
-            fig_artists.update_layout(
-                yaxis=dict(autorange="reversed", automargin=True),
-                xaxis_title="Times Seen", yaxis_title="",
-                height=max(360, len(multi_artists) * 28),
-                margin=dict(l=0, r=10, t=10, b=10),
-            )
-            fig_artists.update_traces(textposition='inside', texttemplate='%{text}',
-                                      insidetextanchor='end')
-            st.plotly_chart(fig_artists, use_container_width=True)
+        if multi_artists.empty:
+            st.info("No repeat artists yet. See someone twice and they'll show up here.")
+        else:
+            st.caption(f"{len(multi_artists)} artists you've seen more than once. Scroll for the full list.")
+            with st.container(height=380):
+                fig_artists = px.bar(multi_artists, x='count', y='artist', orientation='h',
+                                     text='count', color_discrete_sequence=[SPOTIFY_GREEN])
+                fig_artists.update_layout(
+                    yaxis=dict(autorange="reversed", automargin=True),
+                    xaxis=dict(title="Times seen", dtick=1),
+                    yaxis_title="", showlegend=False,
+                    height=max(340, len(multi_artists) * 30),
+                    margin=dict(l=0, r=30, t=10, b=10),
+                )
+                fig_artists.update_traces(textposition='outside', textangle=0, cliponaxis=False,
+                                          hovertemplate='%{y}: seen %{x} times<extra></extra>')
+                st.plotly_chart(fig_artists, use_container_width=True)
 
     st.divider()
 
@@ -211,14 +210,28 @@ try:
         with s_col1:
             st.markdown("### Most Heard Tracks Live")
             top_tracks = (df_songs.groupby(['song', 'artist', 'track_artist']).size()
-                          .reset_index(name='Times Heard')
-                          .sort_values('Times Heard', ascending=False))
-            fig_top_songs = px.bar(top_tracks.head(15), x='Times Heard', y='track_artist',
-                                   orientation='h', text='Times Heard',
-                                   color_discrete_sequence=[SPOTIFY_GREEN])
-            fig_top_songs.update_layout(yaxis=dict(autorange="reversed"),
-                                        xaxis_title="Times Heard Live", yaxis_title="", height=450)
-            st.plotly_chart(fig_top_songs, use_container_width=True)
+                          .reset_index(name='Times Heard'))
+            repeat_tracks = (top_tracks[top_tracks['Times Heard'] >= 2]
+                             .sort_values(['Times Heard', 'track_artist'], ascending=[False, True]))
+
+            if repeat_tracks.empty:
+                st.info("You haven't heard any song live more than once yet.")
+            else:
+                st.caption(f"{len(repeat_tracks)} songs you've heard at least twice. Scroll for the full list.")
+                with st.container(height=450):
+                    fig_top_songs = px.bar(repeat_tracks, x='Times Heard', y='track_artist',
+                                           orientation='h', text='Times Heard',
+                                           color_discrete_sequence=[SPOTIFY_GREEN])
+                    fig_top_songs.update_layout(
+                        yaxis=dict(autorange="reversed", automargin=True),
+                        xaxis=dict(title="Times heard live", dtick=1),
+                        yaxis_title="", showlegend=False,
+                        height=max(420, len(repeat_tracks) * 30),
+                        margin=dict(l=0, r=30, t=10, b=10),
+                    )
+                    fig_top_songs.update_traces(textposition='outside', textangle=0, cliponaxis=False,
+                                                hovertemplate='%{y}: heard %{x} times<extra></extra>')
+                    st.plotly_chart(fig_top_songs, use_container_width=True)
 
         with s_col2:
             st.markdown("### Deep Cuts Index")
@@ -265,6 +278,27 @@ try:
                         st.warning(str(e))
 
         st.divider()
+
+    # 4b. Covers
+    st.subheader("🎸 Covers")
+    df_covers = extract_covers(df_att)
+    if df_covers.empty:
+        st.caption("No covers found. Cover info comes from the live setlist.fm sync, so it won't "
+                   "appear if the saved CSV is being used.")
+    else:
+        cv1, cv2, cv3, cv4 = st.columns(4)
+        cv1.metric("Covers Heard Live", len(df_covers))
+        cv2.metric("Different Covers", len(df_covers[['Song', 'Original Artist']].drop_duplicates()))
+        most_covered = df_covers['Original Artist'].value_counts()
+        cv3.metric("Most-Covered Artist", most_covered.index[0], f"{most_covered.iloc[0]} times",
+                   delta_color="off")
+        top_coverer = df_covers['Performed By'].value_counts()
+        cv4.metric("Covers The Most", top_coverer.index[0], f"{top_coverer.iloc[0]} covers",
+                   delta_color="off")
+        st.dataframe(df_covers.drop(columns='eventDate_dt'), use_container_width=True,
+                     hide_index=True, height=300)
+
+    st.divider()
 
     # 5. Full attendance history log
     st.subheader("Full Attendance History Log")
