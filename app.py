@@ -650,17 +650,29 @@ with tab2:
         df_att['year'] = df_att['eventDate_dt'].dt.year
         df_att['lat'] = pd.to_numeric(df_att['lat'], errors='coerce')
         df_att['long'] = pd.to_numeric(df_att['long'], errors='coerce')
-        return df_att
+        
+        # REFACTOR: Group same-day setlists at the same venue into 1 Concert Event
+        df_concerts = df_att.groupby(
+            ['eventDate_dt', 'Date', 'venue', 'city', 'state', 'lat', 'long', 'year'], 
+            as_index=False
+        ).agg({
+            'artist': lambda x: ", ".join(dict.fromkeys(x)), # Lists headliner + openers without duplicate names
+            'song_count': 'sum',                            # Total songs heard that night
+            'tour': lambda x: next((str(t) for t in x if pd.notna(t) and str(t).strip() not in ['None', '']), 'N/A'),
+            'url': 'first'
+        }).sort_values('eventDate_dt', ascending=False)
+        
+        return df_att, df_concerts
 
     try:
-        df_att = load_attendance()
+        df_att, df_concerts = load_attendance()
 
-        # 1. Top Key Metric Cards
+        # 1. Top Key Metric Cards (Refactored to Concert Events)
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Shows", len(df_att))
+        col1.metric("Total Concerts", len(df_concerts))
         col2.metric("Unique Artists", df_att['artist'].nunique())
-        col3.metric("Venues Visited", df_att['venue'].nunique())
-        col4.metric("Cities Visited", df_att['city'].nunique())
+        col3.metric("Venues Visited", df_concerts['venue'].nunique())
+        col4.metric("Cities Visited", df_concerts['city'].nunique())
 
         st.divider()
 
@@ -668,13 +680,13 @@ with tab2:
         c1, c2 = st.columns(2)
 
         with c1:
-            st.subheader("Shows Attended per Year")
-            yearly_counts = df_att.groupby('year').size().reset_index(name='shows')
+            st.subheader("Concerts Attended per Year")
+            yearly_counts = df_concerts.groupby('year').size().reset_index(name='concerts')
             fig_year = px.bar(
-                yearly_counts, x='year', y='shows', text='shows',
+                yearly_counts, x='year', y='concerts', text='concerts',
                 color_discrete_sequence=['#1DB954']
             )
-            fig_year.update_layout(xaxis_title="Year", yaxis_title="Number of Shows")
+            fig_year.update_layout(xaxis_title="Year", yaxis_title="Number of Concerts")
             st.plotly_chart(fig_year, use_container_width=True)
 
         with c2:
@@ -685,30 +697,28 @@ with tab2:
                 top_artists, x='count', y='artist', orientation='h', text='count',
                 color_discrete_sequence=['#1DB954']
             )
-            fig_artists.update_layout(yaxis=dict(autorange="reversed"), xaxis_title="Shows Attended")
+            fig_artists.update_layout(yaxis=dict(autorange="reversed"), xaxis_title="Times Seen")
             st.plotly_chart(fig_artists, use_container_width=True)
 
         st.divider()
 
-        # 3. Interactive Venue Footprint Map using Plotly (v5 & v6 Compatible)
+        # 3. High-Contrast Dark Map Box (Extreme Zoom Visibility)
         st.subheader("Geographic Footprint")
         st.caption("💡 Hover over or click any green pin to view venue stats!")
 
-        map_data = df_att.dropna(subset=['lat', 'long']).copy()
+        map_data = df_concerts.dropna(subset=['lat', 'long']).copy()
 
-        # Aggregate venue stats and top artists
+        # Aggregate venue stats and top performers seen at each venue
         def agg_venue(g):
             top_3 = ", ".join(g['artist'].value_counts().head(3).index)
             return pd.Series({
                 'City': g['city'].iloc[0],
                 'State': g['state'].iloc[0],
-                'Shows Attended': len(g),
-                'Top Artists': top_3
+                'Concerts Attended': len(g),
+                'Top Performers': top_3
             })
 
         venue_summary = map_data.groupby('venue').apply(agg_venue).reset_index()
-
-        # Merge back coordinates
         coords_df = map_data[['venue', 'lat', 'long']].drop_duplicates(subset=['venue'])
         venue_summary = venue_summary.merge(coords_df, on='venue', how='left')
 
@@ -719,30 +729,31 @@ with tab2:
             "data_frame": venue_summary,
             "lat": "lat",
             "lon": "long",
-            "size": "Shows Attended",
-            "size_max": 20,
-            "color_discrete_sequence": ["#1DB954"],  # Spotify Green
+            "size": "Concerts Attended",
+            "size_max": 22,
+            "color_discrete_sequence": ["#1DB954"], # Spotify Green
             "hover_name": "venue",
             "hover_data": {
                 "lat": False,
                 "long": False,
                 "City": True,
                 "State": True,
-                "Shows Attended": True,
-                "Top Artists": True
+                "Concerts Attended": True,
+                "Top Performers": True
             },
             "zoom": 10,
             "center": {"lat": 40.7500, "lon": -73.9800},
             "height": 520
         }
 
-        # Set appropriate tile parameter based on installed Plotly version
+        # Carto-Darkmatter provides ultra-high contrast for green dots on dark street tiles
         if hasattr(px, "scatter_map"):
-            map_kwargs["map_style"] = "open-street-map"
+            map_kwargs["map_style"] = "carto-darkmatter"
         else:
-            map_kwargs["mapbox_style"] = "open-street-map"
+            map_kwargs["mapbox_style"] = "carto-darkmatter"
 
         fig_map = map_fn(**map_kwargs)
+        fig_map.update_traces(marker=dict(opacity=0.9))
 
         fig_map.update_layout(
             margin={"r": 0, "t": 0, "l": 0, "b": 0},
@@ -764,40 +775,46 @@ with tab2:
         selected_venue = st.selectbox("Select a venue to view concert history:", venue_list, index=default_idx)
 
         if selected_venue:
-            v_shows = df_att[df_att['venue'] == selected_venue]
+            v_shows = df_concerts[df_concerts['venue'] == selected_venue]
             
             v_col1, v_col2, v_col3 = st.columns(3)
-            v_col1.metric("Shows at Venue", len(v_shows))
-            v_col2.metric("Unique Artists Seen", v_shows['artist'].nunique())
-            v_col3.metric("Most Seen Artist Here", v_shows['artist'].mode()[0] if not v_shows.empty else "N/A")
+            v_col1.metric("Concerts at Venue", len(v_shows))
+            v_col2.metric("Unique Performers Seen", df_att[df_att['venue'] == selected_venue]['artist'].nunique())
+            v_col3.metric("Most Seen Artist Here", df_att[df_att['venue'] == selected_venue]['artist'].mode()[0] if not v_shows.empty else "N/A")
             
             st.dataframe(
                 v_shows[['Date', 'artist', 'tour', 'song_count']],
+                column_config={
+                    "Date": "Date",
+                    "artist": "Artist(s) Performed",
+                    "tour": "Tour",
+                    "song_count": "Total Songs"
+                },
                 use_container_width=True,
                 hide_index=True
             )
 
-        # 5. Complete Attendance Log Table
+        # 5. Complete Concert Event Log Table
         st.divider()
-        st.subheader("Full Attendance History Log")
+        st.subheader("Full Concert History Log")
         
         display_cols = ['Date', 'artist', 'venue', 'city', 'state', 'tour', 'song_count']
         column_configs = {
             "Date": st.column_config.TextColumn("Date"),
-            "artist": st.column_config.TextColumn("Artist"),
+            "artist": st.column_config.TextColumn("Artist(s) Performed"),
             "venue": st.column_config.TextColumn("Venue"),
             "city": st.column_config.TextColumn("City"),
             "state": st.column_config.TextColumn("State"),
             "tour": st.column_config.TextColumn("Tour"),
-            "song_count": st.column_config.NumberColumn("Songs"),
+            "song_count": st.column_config.NumberColumn("Total Songs"),
         }
 
-        if 'url' in df_att.columns:
+        if 'url' in df_concerts.columns:
             display_cols.append('url')
             column_configs["url"] = st.column_config.LinkColumn("Setlist Link", display_text="View Setlist 🔗")
 
         st.dataframe(
-            df_att[display_cols],
+            df_concerts[display_cols],
             column_config=column_configs,
             use_container_width=True,
             hide_index=True
