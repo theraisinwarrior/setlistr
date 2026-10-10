@@ -24,6 +24,55 @@ def _get(url: str, api_key: str, retries: int = 3):
     return resp
 
 
+class SetlistFmError(Exception):
+    """A problem talking to setlist.fm, with a message that is safe to show the user."""
+
+
+def fetch_attended_setlists(username: str, api_key: str, max_pages: int = 100) -> list:
+    """Return every setlist the user has marked as attended on setlist.fm.
+
+    Raises SetlistFmError with a friendly message on failure.
+    """
+    username = username.strip()
+    if not username:
+        raise SetlistFmError("Enter a setlist.fm username.")
+
+    all_setlists, page = [], 1
+    while page <= max_pages:
+        url = f"{API_BASE}/user/{requests.utils.quote(username)}/attended?p={page}"
+        try:
+            resp = _get(url, api_key)
+        except requests.RequestException:
+            raise SetlistFmError("Couldn't reach setlist.fm. Try again in a minute.")
+
+        if resp is None:
+            raise SetlistFmError("Couldn't reach setlist.fm. Try again in a minute.")
+        if resp.status_code == 404:
+            raise SetlistFmError(f"No setlist.fm user named '{username}' was found.")
+        if resp.status_code in (401, 403):
+            raise SetlistFmError("setlist.fm rejected the API key.")
+        if resp.status_code == 429:
+            raise SetlistFmError("setlist.fm is rate-limiting requests. Try again in a minute.")
+        if resp.status_code != 200:
+            raise SetlistFmError(f"setlist.fm returned an error (HTTP {resp.status_code}).")
+
+        data = resp.json()
+        batch = data.get("setlist", [])
+        if not batch:
+            break
+        all_setlists.extend(batch)
+
+        per_page = data.get("itemsPerPage") or len(batch)
+        total = data.get("total", 0)
+        if page * per_page >= total:
+            break
+
+        page += 1
+        time.sleep(0.6)  # stay under setlist.fm's 2 requests/second limit
+
+    return all_setlists
+
+
 def get_mbid_from_name(artist_query: str, api_key: str):
     """Resolve an artist name to (mbid, canonical name), or (None, None)."""
     clean_query = artist_query.strip().lower()

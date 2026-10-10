@@ -3,16 +3,52 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from data.store import load_attendance
-from services.setlistfm import get_global_artist_stats
+from data.attendance import process_attendance
+from data.store import clear_sync_cache, load_csv_attendance, sync_attended_shows
+from services.auth import get_setlist_api_key
+from services.setlistfm import SetlistFmError, get_global_artist_stats
 
 SPOTIFY_GREEN = "#1DB954"
 
 st.title("🎫 My Concert Passport")
 st.caption("Visualizing personal concert attendance history logged on Setlist.fm")
 
+# ------------------------------------------
+# Data source: live sync from setlist.fm (CSV is the fallback)
+# ------------------------------------------
+default_username = st.secrets.get("SETLISTFM_USERNAME", "raisinwarrior")
+api_key_for_sync = get_setlist_api_key()
+
+u_col, b_col = st.columns([3, 1], vertical_alignment="bottom")
+with u_col:
+    username = st.text_input("setlist.fm username", value=default_username,
+                             help="Your attended shows are pulled from your public setlist.fm profile.")
+with b_col:
+    if st.button("🔄 Refresh from setlist.fm", use_container_width=True):
+        clear_sync_cache()
+        st.rerun()
+
+raw_attendance = None
+if username.strip() and api_key_for_sync:
+    try:
+        with st.spinner(f"Syncing attended shows for {username.strip()} from setlist.fm "
+                        "(the first load can take a bit if you have a lot of shows)..."):
+            raw_attendance = sync_attended_shows(username.strip(), api_key_for_sync)
+        if raw_attendance.empty:
+            st.info(f"No attended shows found for '{username.strip()}'. "
+                    "Mark shows as attended on setlist.fm and refresh.")
+            st.stop()
+        st.caption(f"✅ Synced {len(raw_attendance)} setlists from setlist.fm "
+                   f"for **{username.strip()}** (refreshes automatically once a day).")
+    except SetlistFmError as e:
+        st.warning(f"{e} Showing the saved CSV instead.")
+elif not api_key_for_sync:
+    st.warning("Add a Setlist.fm API key to sync live. Showing the saved CSV instead.")
+
 try:
-    df_att, df_concerts, df_songs = load_attendance()
+    if raw_attendance is None:
+        raw_attendance = load_csv_attendance()
+    df_att, df_concerts, df_songs = process_attendance(raw_attendance)
 
     # 1. Key metric cards
     col1, col2, col3, col4 = st.columns(4)
