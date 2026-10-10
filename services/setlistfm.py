@@ -115,3 +115,25 @@ def fetch_setlists(artist_mbid: str, api_key: str, max_shows: int,
         time.sleep(0.3)
 
     return fetched
+
+
+def fetch_year_setlists(artist_mbid: str, year: int, api_key: str) -> list:
+    """One page (up to 20, newest first) of an artist's setlists for a given year.
+
+    Returns [] when setlist.fm has none. Raises SetlistFmError on rate limits or errors.
+    """
+    url = f"{API_BASE}/search/setlists?artistMbid={artist_mbid}&year={int(year)}&p=1"
+    try:
+        resp = _get(url, api_key)
+    except requests.RequestException:
+        raise SetlistFmError("Couldn't reach setlist.fm.")
+    time.sleep(0.5)  # stay under setlist.fm's request-rate limit
+    if resp is None:
+        raise SetlistFmError("Couldn't reach setlist.fm.")
+    if resp.status_code == 404:
+        return []
+    if resp.status_code == 429:
+        raise SetlistFmError("setlist.fm is rate-limiting requests.")
+    if resp.status_code != 200:
+        raise SetlistFmError(f"setlist.fm returned an error (HTTP {resp.status_code}).")
+    return resp.json().get("setlist", [])

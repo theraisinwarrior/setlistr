@@ -1,12 +1,14 @@
 """Concert Passport: personal attendance dashboard."""
+from datetime import datetime
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from data.attendance import apply_venue_overrides, extract_covers, process_attendance
-from analytics.deep_cuts import deep_cuts_table, song_frequency
-from analytics.passport_stats import compute_highlights
-from data.store import (clear_sync_cache, get_artist_recent_setlists, load_csv_attendance,
+from analytics.deep_cuts import global_rare_songs, scan_plan, song_frequency
+from analytics.passport_stats import compute_highlights, venue_top_performers
+from data.store import (clear_sync_cache, get_artist_year_setlists, load_csv_attendance,
                         load_venue_overrides, sync_attended_shows)
 from services.auth import get_setlist_api_key
 from services.setlistfm import SetlistFmError
@@ -150,16 +152,11 @@ try:
 
     map_data = df_concerts.dropna(subset=['lat', 'long']).copy()
 
-    def agg_venue(g):
-        top_3 = ", ".join(g['artist'].value_counts().head(3).index)
-        return pd.Series({
-            'City': g['city'].iloc[0],
-            'State': g['state'].iloc[0],
-            'Concerts Attended': len(g),
-            'Top Performers': top_3,
-        })
-
-    venue_summary = map_data.groupby('venue').apply(agg_venue).reset_index()
+    venue_summary = (map_data.groupby('venue', as_index=False)
+                     .agg(City=('city', 'first'), State=('state', 'first'),
+                          **{'Concerts Attended': ('city', 'size')}))
+    top_performers = venue_top_performers(df_att)
+    venue_summary['Most Seen Here'] = venue_summary['venue'].map(top_performers)
     coords_df = map_data[['venue', 'lat', 'long']].drop_duplicates(subset=['venue'])
     venue_summary = venue_summary.merge(coords_df, on='venue', how='left')
 
@@ -174,7 +171,7 @@ try:
         "color_discrete_sequence": [SPOTIFY_GREEN],
         "hover_name": "venue",
         "hover_data": {"lat": False, "long": False, "City": True, "State": True,
-                       "Concerts Attended": True, "Top Performers": True},
+                       "Concerts Attended": True, "Most Seen Here": True},
         "zoom": 10,
         "center": {"lat": 40.7500, "lon": -73.9800},
         "height": 520,
@@ -234,48 +231,63 @@ try:
                     st.plotly_chart(fig_top_songs, use_container_width=True)
 
         with s_col2:
-            st.markdown("### Deep Cuts Index")
-            st.caption("Songs you heard live that this artist rarely plays. Rarity is the share of "
-                       "their ~100 most recent shows on setlist.fm that included the song.")
+            st.markdown("### 💎 Rarest Songs You've Heard")
+            st.caption("Every song you've heard live, ranked by how rarely that artist played it in the "
+                       "year you saw them (judged from up to 20 of their shows that year).")
 
-            artist_list = sorted(df_att['artist'].value_counts().index.tolist())
-            selected_deep_artist = st.selectbox("Select an artist:", artist_list)
-            rare_threshold = st.slider("Count a song as a deep cut if it was played in fewer than "
-                                       "this % of recent shows", 5, 50, 25, step=5)
+            scope = st.selectbox("Concerts to scan", ["Last 2 years", "Last 5 years", "All time"])
+            this_year = datetime.now().year
+            min_year = {"Last 2 years": this_year - 1, "Last 5 years": this_year - 4,
+                        "All time": None}[scope]
+            scope_att = df_att if min_year is None else df_att[df_att['year'] >= min_year]
+            plan = scan_plan(scope_att)
 
-            if selected_deep_artist:
-                user_artist_songs = df_songs[df_songs['artist'] == selected_deep_artist]['song'].unique().tolist()
+            if not api_key_for_sync:
+                st.warning("Add a Setlist.fm API key to find rare songs.")
+            elif not plan:
+                st.info("Nothing to scan in that range. This needs the live setlist.fm sync.")
+            else:
+                st.caption(f"{len(plan)} artist-years to check, about "
+                           f"{max(1, round(len(plan) * 0.9 / 60))} min the first time. "
+                           "Results are remembered for a week, so repeat scans are fast.")
 
-                artist_mbid = ""
-                if 'artist_mbid' in df_att.columns:
-                    mbids = df_att.loc[df_att['artist'] == selected_deep_artist, 'artist_mbid'].dropna()
-                    artist_mbid = mbids.iloc[0] if not mbids.empty else ""
+                if st.button("🔍 Find my rarest songs", use_container_width=True):
+                    samples, hit_limit = {}, False
+                    progress = st.progress(0.0, text="Starting...")
+                    for i, (artist, mbid, year) in enumerate(plan):
+                        progress.progress(i / len(plan), text=f"Checking {artist} ({year}): {i + 1} of {len(plan)}")
+                        try:
+                            setlists = get_artist_year_setlists(mbid, year, api_key_for_sync)
+                        except SetlistFmError:
+                            hit_limit = True
+                            break
+                        samples[(mbid, year)] = song_frequency(setlists)
+                    progress.empty()
+                    table, stats = global_rare_songs(scope_att, samples)
+                    st.session_state["rare_result"] = {"table": table, "stats": stats,
+                                                       "hit_limit": hit_limit}
 
-                if not api_key_for_sync:
-                    st.warning("Add a Setlist.fm API key to measure song rarity.")
-                else:
-                    try:
-                        with st.spinner(f"Loading recent {selected_deep_artist} setlists..."):
-                            recent = get_artist_recent_setlists(selected_deep_artist, artist_mbid, api_key_for_sync)
-                        n_recent, play_counts = song_frequency(recent)
-
-                        if n_recent < 5:
-                            st.info(f"setlist.fm doesn't have enough recent full setlists for "
-                                    f"**{selected_deep_artist}** to measure rarity.")
-                        else:
-                            cuts = deep_cuts_table(user_artist_songs, play_counts, n_recent, rare_threshold)
-                            if cuts.empty:
-                                st.info(f"Every song you heard from **{selected_deep_artist}** is a regular "
-                                        f"in their recent sets (played in {rare_threshold}%+ of shows).")
-                            else:
-                                st.success(f"{len(cuts)} of the {len(user_artist_songs)} songs you heard from "
-                                           f"**{selected_deep_artist}** were deep cuts "
-                                           f"(compared with their last {n_recent} shows).")
-                                st.dataframe(cuts, use_container_width=True, hide_index=True, height=300)
-                                st.caption("A 0 means they didn't play it at all in their recent shows. "
-                                           "That can mean a true rarity, or a song from an earlier era or tour.")
-                    except SetlistFmError as e:
-                        st.warning(str(e))
+                res = st.session_state.get("rare_result")
+                if res:
+                    table, stats = res["table"], res["stats"]
+                    if res["hit_limit"]:
+                        st.warning("setlist.fm's request limit was hit, so this list is partial. "
+                                   "Click the button again in a bit; everything already checked is remembered.")
+                    if table.empty:
+                        st.info("No songs could be scored. setlist.fm may not have enough setlists for these artists.")
+                    else:
+                        max_pct = st.slider("Show songs played in at most this % of that year's shows",
+                                            5, 50, 15, step=5)
+                        shown = table[table['pct'] <= max_pct]
+                        top = table.iloc[0]
+                        st.metric("Rarest song you've heard", top['Song'],
+                                  f"{top['Artist']} ({top['Played In']})", delta_color="off")
+                        st.success(f"{len(shown)} rare songs found across {stats['scored_shows']} concerts.")
+                        st.dataframe(shown[['Song', 'Artist', 'Heard On', 'Played In', 'Frequency']].head(300),
+                                     use_container_width=True, hide_index=True, height=300)
+                        if stats['skipped_shows']:
+                            st.caption(f"{stats['skipped_shows']} concert(s) were skipped: setlist.fm had "
+                                       "fewer than 8 setlists for that artist that year, or they couldn't be checked.")
 
         st.divider()
 

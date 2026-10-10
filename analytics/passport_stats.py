@@ -121,3 +121,16 @@ def compute_highlights(df_att: pd.DataFrame, df_concerts: pd.DataFrame,
          "earned": hot, "progress": "Earned!" if hot else "Not yet"},
     ]
     return h
+
+
+def venue_top_performers(df_att: pd.DataFrame, top_n: int = 3, sep: str = "<br>") -> dict:
+    """Map venue -> 'Artist ×N' lines for the artists seen most often there.
+
+    Counts individual artists from the per-artist rows (not the combined
+    lineup strings), so each performer appears once with their real count.
+    """
+    result = {}
+    for venue, grp in df_att.groupby("venue"):
+        counts = grp["artist"].value_counts().head(top_n)
+        result[venue] = sep.join(f"{a} ×{n}" for a, n in counts.items())
+    return result

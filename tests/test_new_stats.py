@@ -3,7 +3,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from analytics.deep_cuts import deep_cuts_table, song_frequency, song_key
+from analytics.deep_cuts import song_frequency, song_key
 from analytics.passport_stats import compute_highlights, haversine_miles
 from data.attendance import process_attendance
 
@@ -25,11 +25,36 @@ def test_song_frequency_counts_once_per_show_and_skips_short_sets():
     assert counts[song_key("A")] == 2 and counts[song_key("F")] == 1
 
 
-def test_deep_cuts_table_flags_rare_and_unseen_songs():
-    counts = Counter({song_key("Hit"): 9, song_key("Rare"): 1})
-    t = deep_cuts_table(["Hit", "Rare", "Never Played"], counts, n_shows=10, threshold_pct=25)
-    assert list(t["Track Title"]) == ["Never Played", "Rare"]  # fewest plays first, Hit excluded
-    assert t.iloc[1]["Frequency"] == "10%"
+def test_global_rare_songs_ranks_across_artists():
+    import json
+    from analytics.deep_cuts import global_rare_songs, scan_plan
+    rows = [
+        {"eventDate": "2024-05-01", "artist": "Band A", "artist_mbid": "a1", "venue": "V1", "city": "NYC",
+         "state": "NY", "lat": 1, "long": 1, "song_count": 3, "tour": None, "url": "",
+         "songs": json.dumps(["Hit", "Bustout", "Other"])},
+        {"eventDate": "2023-05-01", "artist": "Band B", "artist_mbid": "b1", "venue": "V2", "city": "NYC",
+         "state": "NY", "lat": 1, "long": 1, "song_count": 1, "tour": None, "url": "",
+         "songs": json.dumps(["Only Song"])},
+        {"eventDate": "2024-06-01", "artist": "Band C", "artist_mbid": "c1", "venue": "V3", "city": "NYC",
+         "state": "NY", "lat": 1, "long": 1, "song_count": 1, "tour": None, "url": "",
+         "songs": json.dumps(["Tiny Sample Song"])},
+    ]
+    df_att, _, _ = process_attendance(pd.DataFrame(rows))
+
+    assert len(scan_plan(df_att)) == 3
+    assert len(scan_plan(df_att, min_year=2024)) == 2
+
+    samples = {
+        ("a1", 2024): (20, Counter({song_key("Hit"): 19, song_key("Other"): 10})),  # Bustout never in sample
+        ("b1", 2023): (10, Counter({song_key("Only Song"): 2})),
+        ("c1", 2024): (3, Counter()),  # sample too small, so skipped
+    }
+    table, stats = global_rare_songs(df_att, samples, min_sample=8)
+
+    assert list(table["Song"]) == ["Bustout", "Only Song", "Other", "Hit"]
+    assert table.iloc[0]["Played In"] == "1 of 20 shows in 2024"   # own show counts at minimum
+    assert table.iloc[0]["Frequency"] == "5%"
+    assert stats == {"scored_shows": 2, "skipped_shows": 1}
 
 
 def _fake_attendance():
@@ -92,3 +117,12 @@ def test_extract_covers():
     assert (row["Song"], row["Original Artist"], row["Performed By"]) == ("Come Together", "The Beatles", "Band A")
     # data without cover info (the old CSV) yields an empty table instead of crashing
     assert extract_covers(df_att.drop(columns="covers")).empty
+
+
+def test_venue_top_performers_counts_individual_artists():
+    from analytics.passport_stats import venue_top_performers
+    df_att, _, _ = process_attendance(_fake_attendance())
+    top = venue_top_performers(df_att)
+    assert top["MSG"].split("<br>")[0] == "Band A ×2"   # seen twice there, listed once
+    assert "Band B ×1" in top["MSG"]
+    assert top["Red Rocks"] == "Band C ×1"

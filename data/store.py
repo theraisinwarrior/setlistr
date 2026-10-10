@@ -3,8 +3,7 @@ import pandas as pd
 import streamlit as st
 
 from data.attendance import setlists_to_dataframe
-from services.setlistfm import (SetlistFmError, fetch_attended_setlists, fetch_setlists,
-                                get_mbid_from_name)
+from services.setlistfm import fetch_attended_setlists, fetch_year_setlists
 
 ATTENDANCE_CSV = "attended_shows.csv"
 
@@ -15,18 +14,13 @@ def sync_attended_shows(username: str, api_key: str) -> pd.DataFrame:
     return setlists_to_dataframe(fetch_attended_setlists(username, api_key))
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_artist_recent_setlists(artist_name: str, mbid: str, api_key: str, max_shows: int = 100) -> list:
-    """An artist's most recent setlists, used to measure how rare a song is.
+@st.cache_data(ttl=7 * 86400, show_spinner=False)  # rarity changes slowly, so remember for a week
+def get_artist_year_setlists(mbid: str, year: int, api_key: str) -> list:
+    """Up to 20 of an artist's setlists from one year (used to judge how rare a song was).
 
-    Raises SetlistFmError when nothing can be loaded, so a failed lookup is never cached.
+    Failures raise SetlistFmError, so they are never cached.
     """
-    if not mbid:
-        mbid, _ = get_mbid_from_name(artist_name, api_key)
-    setlists = fetch_setlists(mbid, api_key, max_shows, False, 0)[:max_shows] if mbid else []
-    if not setlists:
-        raise SetlistFmError(f"Couldn't load recent setlists for {artist_name} from setlist.fm.")
-    return setlists
+    return fetch_year_setlists(mbid, int(year), api_key)
 
 
 def clear_sync_cache() -> None:
