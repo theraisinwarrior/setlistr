@@ -691,11 +691,11 @@ with tab2:
 
         st.divider()
 
-        # 3. High-Detail Venue Map with Dark Text Labels & Voyager Base Map
+        # 3. True Venue Footprint Map with OpenStreetMap Street Coordinates
         st.subheader("Geographic Footprint")
         map_data = df_att.dropna(subset=['lat', 'long']).copy()
         
-        # Aggregate venue metrics & top artists seen at each location
+        # Aggregate show counts and top artists for each exact venue location
         venue_summary = map_data.groupby(['venue', 'city', 'state', 'lat', 'long']).apply(
             lambda g: pd.Series({
                 'count': len(g),
@@ -704,42 +704,26 @@ with tab2:
         ).reset_index()
 
         view_state = pdk.ViewState(
-            latitude=venue_summary['lat'].mean() if not venue_summary.empty else 40.0,
-            longitude=venue_summary['long'].mean() if not venue_summary.empty else -95.0,
-            zoom=9,
+            latitude=venue_summary['lat'].mean() if not venue_summary.empty else 40.7128,
+            longitude=venue_summary['long'].mean() if not venue_summary.empty else -74.0060,
+            zoom=10,  # Zoomed directly into exact venue street layout
             pitch=0
         )
 
-        # Pin Dots Layer
         scatter_layer = pdk.Layer(
             "ScatterplotLayer",
             venue_summary,
             get_position=["long", "lat"],
-            get_color="[29, 185, 84, 220]",
+            get_color="[29, 185, 84, 220]", # Spotify Green
             radius_min_pixels=7,
-            radius_max_pixels=20,
-            get_radius="count * 100",
+            radius_max_pixels=22,
+            get_radius="count * 80",
             pickable=True,
-        )
-
-        # Visible Venue Name Labels (Dark text for light map background)
-        text_layer = pdk.Layer(
-            "TextLayer",
-            venue_summary,
-            get_position=["long", "lat"],
-            get_text="venue",
-            get_color="[20, 20, 20, 255]",  # Dark charcoal text
-            get_size=12,
-            get_angle=0,
-            get_text_anchor="'middle'",
-            get_alignment_baseline="'bottom'",
-            get_pixel_offset=[0, -12],     # Positioned right above the dot
-            pickable=True
         )
 
         st.pydeck_chart(pdk.Deck(
             map_style="https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
-            layers=[scatter_layer, text_layer],
+            layers=[scatter_layer],
             initial_view_state=view_state,
             tooltip={
                 "html": "<div style='font-family: sans-serif; padding: 4px;'>"
