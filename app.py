@@ -690,55 +690,61 @@ with tab2:
 
         st.divider()
 
-        # 3. Interactive Venue Footprint Map
+        # 3. Interactive Venue Footprint Map using Plotly Mapbox
         st.subheader("Geographic Footprint")
-        st.caption("💡 Hover over any green pin on the map to see the venue name, show count, and top artists seen there!")
-        
+        st.caption("💡 Hover over or click any green pin to view venue stats!")
+
         map_data = df_att.dropna(subset=['lat', 'long']).copy()
-        
-        # Aggregate show counts and top artists for each venue
+
+        # Aggregate venue stats and top artists
         def agg_venue(g):
+            top_3 = ", ".join(g['artist'].value_counts().head(3).index)
             return pd.Series({
-                'count': len(g),
-                'top_artists': ", ".join(g['artist'].value_counts().head(3).index)
+                'City': g['city'].iloc[0],
+                'State': g['state'].iloc[0],
+                'Shows Attended': len(g),
+                'Top Artists': top_3
             })
 
-        venue_summary = map_data.groupby(['venue', 'city', 'state', 'lat', 'long']).apply(agg_venue).reset_index()
-        import numpy as np
-        venue_summary['radius'] = np.sqrt(venue_summary['count']) * 40 + 40
+        venue_summary = map_data.groupby('venue').apply(agg_venue).reset_index()
 
-        view_state = pdk.ViewState(
-            latitude=40.7500,
-            longitude=-73.9800,
-            zoom=10,
-            pitch=0
-        )
+        # Merge back coordinates
+        coords_df = map_data[['venue', 'lat', 'long']].drop_duplicates(subset=['venue'])
+        venue_summary = venue_summary.merge(coords_df, on='venue', how='left')
 
-        scatter_layer = pdk.Layer(
-            "ScatterplotLayer",
+        fig_map = px.scatter_mapbox(
             venue_summary,
-            get_position=["long", "lat"],
-            get_color="[29, 185, 84, 220]", # Spotify Green
-            radius_min_pixels=6,
-            radius_max_pixels=18,
-            get_radius="radius",
-            pickable=True,
+            lat="lat",
+            lon="long",
+            size="Shows Attended",
+            size_max=22,
+            color_discrete_sequence=["#1DB954"], # Spotify Green
+            hover_name="venue",
+            hover_data={
+                "lat": False,
+                "long": False,
+                "City": True,
+                "State": True,
+                "Shows Attended": True,
+                "Top Artists": True
+            },
+            zoom=10,
+            center={"lat": 40.7500, "lon": -73.9800},
+            mapbox_style="open-street-map",
+            height=520
         )
 
-        st.pydeck_chart(pdk.Deck(
-            map_style="https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
-            layers=[scatter_layer],
-            initial_view_state=view_state,
-            tooltip={
-                "html": "<div style='font-family: sans-serif; padding: 6px; color: white; background-color: #191414; border-radius: 4px;'>"
-                        "<b style='font-size: 15px; color: #1DB954;'>{venue}</b><br/>"
-                        "📍 <b>Location:</b> {city}, {state}<br/>"
-                        "🎟️ <b>Shows Attended:</b> {count}<br/>"
-                        "⭐ <b>Top Artists Seen:</b> {top_artists}"
-                        "</div>",
-                "style": {"backgroundColor": "transparent", "color": "white", "zIndex": "10000"}
-            }
-        ))
+        fig_map.update_layout(
+            margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            hoverlabel=dict(
+                bgcolor="#191414",
+                font_size=13,
+                font_family="sans-serif",
+                font_color="#FFFFFF"
+            )
+        )
+
+        st.plotly_chart(fig_map, use_container_width=True)
 
         # 4. Interactive Venue Inspector Dropdown
         st.markdown("### 🔍 Venue Inspector")
