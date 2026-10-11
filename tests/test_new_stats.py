@@ -154,6 +154,7 @@ def test_parse_attendance_count():
     assert parse_attendance_count(html) == 110
     assert parse_attendance_count("<p><a>1,234 users</a> were there</p>") == 1234
     assert parse_attendance_count("<p>1 user was there</p>") == 1
+    assert parse_attendance_count('<a>110 <span>setlist.fm</span> users</a> were there') == 110
     assert parse_attendance_count("<p>nothing here</p>") is None
     assert parse_attendance_count("") is None
 

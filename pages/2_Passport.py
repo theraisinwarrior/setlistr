@@ -15,7 +15,7 @@ from data.store import (clear_sync_cache, get_artist_show_count, get_artist_year
                         load_csv_attendance, load_venue_overrides, sync_attended_shows)
 from services.auth import get_setlist_api_key
 from services.setlistfm import SetlistFmError
-from services.setlistfm_web import AttendanceBlocked
+from services.setlistfm_web import AttendanceBlocked, diagnose
 
 SPOTIFY_GREEN = "#1DB954"
 
@@ -419,6 +419,10 @@ try:
                 "table": rank_shows_by_attendance(df_att, att_counts),
                 "checked": len(att_counts), "total": len(show_plan), "error": att_error,
             }
+
+        with st.expander("🔧 Troubleshooting: what does setlist.fm send back?"):
+            if st.button("Check one show page"):
+                st.json(diagnose(show_plan[0][2]))
 
         att = st.session_state.get("att_result")
         if att:

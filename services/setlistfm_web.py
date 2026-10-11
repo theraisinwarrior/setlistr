@@ -15,7 +15,9 @@ USER_AGENT = "Setlistr personal concert-stats app (reads the public attendance c
 PAUSE_SECONDS = 1.2
 
 _TAGS = re.compile(r"<[^>]+>")
-_COUNT = re.compile(r"([\d][\d,.\s]*)\s+(?:setlist\.fm\s+)?users?\s+(?:were|was)\s+there", re.I)
+_COUNT = re.compile(r"(\d[\d,.]*)\s+(?:[A-Za-z.]+\s+){0,2}users?\s+(?:were|was)\s+there", re.I)
+_CHALLENGE = ("just a moment", "enable javascript and cookies", "attention required", "cf-chl",
+              "verify you are human", "access denied")
 
 
 class AttendanceBlocked(Exception):
@@ -52,4 +54,27 @@ def fetch_attendance_count(url: str):
         raise AttendanceBlocked(f"setlist.fm answered {resp.status_code}")
     if resp.status_code != 200:
         return None
-    return parse_attendance_count(resp.text)
+    count = parse_attendance_count(resp.text)
+    if count is None and any(m in resp.text[:20000].lower() for m in _CHALLENGE):
+        raise AttendanceBlocked("setlist.fm served a bot-check page instead of the setlist")
+    return count
+
+
+def diagnose(url: str) -> dict:
+    """One-off look at what setlist.fm returns for a page, for troubleshooting."""
+    try:
+        resp = requests.get(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "en"}, timeout=12)
+    except requests.RequestException as e:
+        return {"error": str(e)}
+    body = resp.text or ""
+    low = body.lower()
+    i = low.find("were there")
+    j = low.find("i was there")
+    title = re.search(r"<title[^>]*>(.*?)</title>", body, re.I | re.S)
+    return {
+        "status": resp.status_code, "bytes": len(body),
+        "title": re.sub(r"\s+", " ", title.group(1)).strip() if title else "",
+        "parsed_count": parse_attendance_count(body),
+        "has 'I was there'": j >= 0, "has 'were there'": i >= 0,
+        "snippet": re.sub(r"\s+", " ", body[max(0, i - 200): i + 60]) if i >= 0 else body[:300],
+    }
