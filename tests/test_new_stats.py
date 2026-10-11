@@ -146,30 +146,3 @@ def test_rank_artists_by_popularity():
     assert table.iloc[0]["Times Seen"] == 2 and table.iloc[0]["Last Seen"] == "Jun 01, 2024"
     assert table.iloc[1]["Shows Tracked"] == 7
     assert rank_artists_by_popularity(df_att, {}).empty
-
-
-def test_parse_attendance_count():
-    from services.setlistfm_web import parse_attendance_count
-    html = '<div><a href="/x">110 users</a> were there</div>'
-    assert parse_attendance_count(html) == 110
-    assert parse_attendance_count("<p><a>1,234 users</a> were there</p>") == 1234
-    assert parse_attendance_count("<p>1 user was there</p>") == 1
-    assert parse_attendance_count('<a>110 <span>setlist.fm</span> users</a> were there') == 110
-    assert parse_attendance_count("<p>nothing here</p>") is None
-    assert parse_attendance_count("") is None
-
-
-def test_rank_shows_by_attendance():
-    from analytics.popularity import rank_shows_by_attendance, shows_to_scan
-    base = {"venue": "V", "city": "C", "state": "NY", "lat": 1, "long": 1, "song_count": 1,
-            "tour": None, "songs": "[]"}
-    df_att, _, _ = process_attendance(pd.DataFrame([
-        {**base, "eventDate": "2024-01-01", "artist": "A", "artist_mbid": "m1", "url": "https://www.setlist.fm/setlist/a/1.html"},
-        {**base, "eventDate": "2024-02-01", "artist": "B", "artist_mbid": "m2", "url": "https://www.setlist.fm/setlist/b/2.html"},
-        {**base, "eventDate": "2024-03-01", "artist": "C", "artist_mbid": "m3", "url": ""},
-    ]))
-    assert len(shows_to_scan(df_att)) == 2
-    t = rank_shows_by_attendance(df_att, {"https://www.setlist.fm/setlist/a/1.html": 5,
-                                          "https://www.setlist.fm/setlist/b/2.html": 90})
-    assert list(t["Artist"]) == ["B", "A"] and t.iloc[0]["Users There"] == 90
-    assert rank_shows_by_attendance(df_att, {}).empty

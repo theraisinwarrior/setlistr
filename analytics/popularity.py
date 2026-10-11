@@ -12,40 +12,6 @@ def artists_to_scan(df_att: pd.DataFrame) -> list:
     return [(r.artist, r.artist_mbid) for r in d.itertuples()]
 
 
-SHOW_COLUMNS = ["Date", "Artist", "Venue", "City", "Users There"]
-
-
-def shows_to_scan(df_att: pd.DataFrame) -> list:
-    """(artist, venue, url) for every attended show that has a setlist.fm page."""
-    if "url" not in df_att.columns:
-        return []
-    d = df_att[df_att["url"].fillna("").astype(str).str.startswith("http")]
-    d = d.drop_duplicates(subset=["url"])
-    return [(r.artist, r.venue, r.url) for r in d.itertuples()]
-
-
-def rank_shows_by_attendance(df_att: pd.DataFrame, counts: dict) -> pd.DataFrame:
-    """One row per show with a known count, most attended first.
-
-    `counts` maps setlist url -> number of setlist.fm users who marked "I was there".
-    """
-    if "url" not in df_att.columns or not counts:
-        return pd.DataFrame(columns=SHOW_COLUMNS)
-    d = df_att.drop_duplicates(subset=["url"])
-    rows = []
-    for r in d.itertuples():
-        n = counts.get(r.url)
-        if n is None:
-            continue
-        rows.append({"Date": r.Date, "Artist": r.artist, "Venue": r.venue, "City": r.city,
-                     "Users There": int(n), "_dt": r.eventDate_dt})
-    if not rows:
-        return pd.DataFrame(columns=SHOW_COLUMNS)
-    df = pd.DataFrame(rows)
-    df = df.sort_values(["Users There", "_dt"], ascending=[False, False]).reset_index(drop=True)
-    return df[SHOW_COLUMNS]
-
-
 def rank_artists_by_popularity(df_att: pd.DataFrame, counts: dict) -> pd.DataFrame:
     """One row per artist, biggest first.
 

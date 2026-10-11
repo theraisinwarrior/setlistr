@@ -8,14 +8,11 @@ import streamlit as st
 from data.attendance import apply_venue_overrides, extract_covers, process_attendance
 from analytics.deep_cuts import global_rare_songs, scan_plan, song_frequency
 from analytics.passport_stats import compute_highlights, venue_top_performers
-from analytics.popularity import (artists_to_scan, rank_artists_by_popularity,
-                                  rank_shows_by_attendance, shows_to_scan)
+from analytics.popularity import artists_to_scan, rank_artists_by_popularity
 from data.store import (clear_sync_cache, get_artist_show_count, get_artist_year_setlists,
-                        get_show_attendance,
                         load_csv_attendance, load_venue_overrides, sync_attended_shows)
 from services.auth import get_setlist_api_key
 from services.setlistfm import SetlistFmError
-from services.setlistfm_web import AttendanceBlocked, diagnose
 
 SPOTIFY_GREEN = "#1DB954"
 
@@ -390,68 +387,6 @@ try:
                     st.markdown("**Hidden gems**")
                     gems = pop_table.tail(k).sort_values(["Shows Tracked", "Artist"])
                     st.dataframe(gems, column_config=pop_cfg, use_container_width=True, hide_index=True)
-
-    # 4d. Real per-show attendance (read from setlist.fm's public pages)
-    st.markdown("#### 🙋 Most & least attended shows")
-    st.caption("Counts the 'I was there' users on each show's setlist.fm page. The API doesn't offer this, so "
-               "the app reads the public page slowly, one show at a time (about 1 second each), and remembers "
-               "the results for a week. If setlist.fm refuses the requests, it stops and keeps what it got.")
-    show_plan = shows_to_scan(df_att)
-    if not show_plan:
-        st.info("This needs the live setlist.fm sync (the saved CSV has no setlist links).")
-    else:
-        st.caption(f"{len(show_plan)} shows to check, about {max(1, round(len(show_plan) * 1.3 / 60))} min "
-                   "the first time.")
-        if st.button("📊 Fetch attendance counts", use_container_width=True):
-            att_counts, att_error = {}, None
-            att_progress = st.progress(0.0, text="Starting...")
-            for i, (artist, venue, url) in enumerate(show_plan):
-                att_progress.progress(i / len(show_plan), text=f"{artist}: {i + 1} of {len(show_plan)}")
-                try:
-                    n = get_show_attendance(url)
-                except AttendanceBlocked as e:
-                    att_error = str(e)
-                    break
-                if n is not None:
-                    att_counts[url] = n
-            att_progress.empty()
-            st.session_state["att_result"] = {
-                "table": rank_shows_by_attendance(df_att, att_counts),
-                "checked": len(att_counts), "total": len(show_plan), "error": att_error,
-            }
-
-        with st.expander("🔧 Troubleshooting: what does setlist.fm send back?"):
-            if st.button("Check one show page"):
-                st.json(diagnose(show_plan[0][2]))
-
-        att = st.session_state.get("att_result")
-        if att:
-            if att["error"]:
-                st.warning(f"Stopped early ({att['error']}). Showing what was collected; click again later "
-                           "to continue. Already-checked shows are remembered.")
-            att_table = att["table"]
-            if att_table.empty:
-                st.info("No attendance counts could be read. The page layout may have changed or requests "
-                        "were blocked, so nothing was found.")
-            else:
-                st.caption(f"Counts found for {att['checked']} of {att['total']} shows.")
-                k2 = min(10, max(1, len(att_table) // 2))
-                top, low = att_table.iloc[0], att_table.iloc[-1]
-                a1, a2 = st.columns(2)
-                a1.metric("Most attended show", f"{top['Artist']}", f"{top['Users There']:,} users · {top['Venue']}",
-                          delta_color="off")
-                a2.metric("Most intimate show", f"{low['Artist']}", f"{low['Users There']:,} users · {low['Venue']}",
-                          delta_color="off")
-                att_cfg = {"Users There": st.column_config.NumberColumn("Users There", format="%d")}
-                t1, t2 = st.columns(2)
-                with t1:
-                    st.markdown("**Most attended**")
-                    st.dataframe(att_table.head(k2), column_config=att_cfg, use_container_width=True,
-                                 hide_index=True)
-                with t2:
-                    st.markdown("**Most intimate**")
-                    st.dataframe(att_table.tail(k2).sort_values(["Users There", "Date"]), column_config=att_cfg,
-                                 use_container_width=True, hide_index=True)
 
     st.divider()
 
