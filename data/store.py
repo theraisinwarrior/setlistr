@@ -5,6 +5,7 @@ import streamlit as st
 from data.attendance import setlists_to_dataframe
 from services.setlistfm import (fetch_artist_show_count, fetch_attended_setlists,
                                 fetch_year_setlists)
+from services.setlistfm_web import fetch_attendance_count
 
 ATTENDANCE_CSV = "attended_shows.csv"
 
@@ -28,6 +29,12 @@ def get_artist_year_setlists(mbid: str, year: int, api_key: str) -> list:
 def get_artist_show_count(mbid: str, api_key: str) -> int:
     """Number of an artist's concerts logged on setlist.fm. Failures raise and are never cached."""
     return fetch_artist_show_count(mbid, api_key)
+
+
+@st.cache_data(ttl=7 * 86400, show_spinner=False)
+def get_show_attendance(url: str):
+    """'N users were there' for one setlist page (None if not shown). Blocks raise and are never cached."""
+    return fetch_attendance_count(url)
 
 
 def clear_sync_cache() -> None:

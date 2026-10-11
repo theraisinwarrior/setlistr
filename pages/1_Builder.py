@@ -6,7 +6,8 @@ import spotipy
 import streamlit as st
 
 from analytics.setlist_stats import build_song_table, filter_shows
-from services.auth import get_active_token, get_setlist_api_key, is_spotify_connected
+from services.auth import (get_active_token, get_authorize_url, get_setlist_api_key,
+                           is_spotify_connected)
 from services.setlistfm import fetch_setlists, get_mbid_from_name
 from services.spotify_match import search_spotify_track
 
@@ -232,7 +233,8 @@ if st.session_state.get("raw_setlists"):
         st.subheader("🎧 Export Playlist")
 
         if not is_spotify_connected():
-            st.warning("Please connect your Spotify account in the sidebar first to enable 1-click export.")
+            st.warning("Connect your Spotify account to export this playlist to your library.")
+            st.link_button("🎵 Connect Spotify", get_authorize_url())
         elif st.button("✨ Create Spotify Playlist Now"):
             with st.spinner("Searching Spotify & creating your playlist..."):
                 try:
