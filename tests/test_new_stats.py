@@ -126,3 +126,23 @@ def test_venue_top_performers_counts_individual_artists():
     assert top["MSG"].split("<br>")[0] == "Band A ×2"   # seen twice there, listed once
     assert "Band B ×1" in top["MSG"]
     assert top["Red Rocks"] == "Band C ×1"
+
+
+def test_rank_artists_by_popularity():
+    from analytics.popularity import artists_to_scan, rank_artists_by_popularity
+    df_att, _, _ = process_attendance(pd.DataFrame([
+        {"eventDate": "2024-01-01", "artist": "Big Band", "artist_mbid": "m1", "venue": "V", "city": "C",
+         "state": "NY", "lat": 1, "long": 1, "song_count": 1, "tour": None, "url": "", "songs": "[]"},
+        {"eventDate": "2024-06-01", "artist": "Big Band", "artist_mbid": "m1", "venue": "V", "city": "C",
+         "state": "NY", "lat": 1, "long": 1, "song_count": 1, "tour": None, "url": "", "songs": "[]"},
+        {"eventDate": "2023-03-01", "artist": "Tiny Band", "artist_mbid": "m2", "venue": "W", "city": "C",
+         "state": "NY", "lat": 1, "long": 1, "song_count": 1, "tour": None, "url": "", "songs": "[]"},
+        {"eventDate": "2022-03-01", "artist": "Unchecked", "artist_mbid": "m3", "venue": "W", "city": "C",
+         "state": "NY", "lat": 1, "long": 1, "song_count": 1, "tour": None, "url": "", "songs": "[]"},
+    ]))
+    assert len(artists_to_scan(df_att)) == 3
+    table = rank_artists_by_popularity(df_att, {"m1": 2500, "m2": 7})   # m3 was never looked up
+    assert list(table["Artist"]) == ["Big Band", "Tiny Band"]
+    assert table.iloc[0]["Times Seen"] == 2 and table.iloc[0]["Last Seen"] == "Jun 01, 2024"
+    assert table.iloc[1]["Shows Tracked"] == 7
+    assert rank_artists_by_popularity(df_att, {}).empty

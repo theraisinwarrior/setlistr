@@ -3,7 +3,8 @@ import pandas as pd
 import streamlit as st
 
 from data.attendance import setlists_to_dataframe
-from services.setlistfm import fetch_attended_setlists, fetch_year_setlists
+from services.setlistfm import (fetch_artist_show_count, fetch_attended_setlists,
+                                fetch_year_setlists)
 
 ATTENDANCE_CSV = "attended_shows.csv"
 
@@ -21,6 +22,12 @@ def get_artist_year_setlists(mbid: str, year: int, api_key: str) -> list:
     Failures raise SetlistFmError, so they are never cached.
     """
     return fetch_year_setlists(mbid, int(year), api_key)
+
+
+@st.cache_data(ttl=7 * 86400, show_spinner=False)
+def get_artist_show_count(mbid: str, api_key: str) -> int:
+    """Number of an artist's concerts logged on setlist.fm. Failures raise and are never cached."""
+    return fetch_artist_show_count(mbid, api_key)
 
 
 def clear_sync_cache() -> None:

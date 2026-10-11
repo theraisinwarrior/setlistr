@@ -8,8 +8,9 @@ import streamlit as st
 from data.attendance import apply_venue_overrides, extract_covers, process_attendance
 from analytics.deep_cuts import global_rare_songs, scan_plan, song_frequency
 from analytics.passport_stats import compute_highlights, venue_top_performers
-from data.store import (clear_sync_cache, get_artist_year_setlists, load_csv_attendance,
-                        load_venue_overrides, sync_attended_shows)
+from analytics.popularity import artists_to_scan, rank_artists_by_popularity
+from data.store import (clear_sync_cache, get_artist_show_count, get_artist_year_setlists,
+                        load_csv_attendance, load_venue_overrides, sync_attended_shows)
 from services.auth import get_setlist_api_key
 from services.setlistfm import SetlistFmError
 
@@ -325,6 +326,67 @@ try:
                    delta_color="off")
         st.dataframe(df_covers.drop(columns='eventDate_dt'), use_container_width=True,
                      hide_index=True, height=300)
+
+    st.divider()
+
+    # 4c. Big names & hidden gems
+    st.subheader("🌟 Big Names & Hidden Gems")
+    st.caption("How famous are the acts you've seen? setlist.fm doesn't publish crowd sizes, so this counts "
+               "how many of each artist's concerts are logged on setlist.fm. Big touring acts have "
+               "thousands; small bands have a handful.")
+
+    pop_plan = artists_to_scan(df_att)
+    if not api_key_for_sync:
+        st.warning("Add a Setlist.fm API key to rank your artists.")
+    elif not pop_plan:
+        st.info("This needs the live setlist.fm sync (the saved CSV has no artist IDs).")
+    else:
+        st.caption(f"{len(pop_plan)} artists to check, about {max(1, round(len(pop_plan) * 0.9 / 60))} "
+                   "min the first time. Results are remembered for a week.")
+
+        if st.button("📊 Rank my artists by popularity", use_container_width=True):
+            pop_counts, pop_hit_limit = {}, False
+            pop_progress = st.progress(0.0, text="Starting...")
+            for i, (artist, mbid) in enumerate(pop_plan):
+                pop_progress.progress(i / len(pop_plan), text=f"Checking {artist}: {i + 1} of {len(pop_plan)}")
+                try:
+                    pop_counts[mbid] = get_artist_show_count(mbid, api_key_for_sync)
+                except SetlistFmError:
+                    pop_hit_limit = True
+                    break
+            pop_progress.empty()
+            st.session_state["pop_result"] = {
+                "table": rank_artists_by_popularity(df_att, pop_counts),
+                "hit_limit": pop_hit_limit,
+            }
+
+        pop = st.session_state.get("pop_result")
+        if pop:
+            pop_table = pop["table"]
+            if pop["hit_limit"]:
+                st.warning("setlist.fm's request limit was hit, so this list is partial. Click the button "
+                           "again in a bit; everything already checked is remembered.")
+            if pop_table.empty:
+                st.info("No artists could be ranked yet.")
+            else:
+                k = min(10, max(1, len(pop_table) // 2))
+                biggest, smallest = pop_table.iloc[0], pop_table.iloc[-1]
+                m1, m2 = st.columns(2)
+                m1.metric("Biggest act you've seen", biggest["Artist"],
+                          f"{biggest['Shows Tracked']:,} shows logged", delta_color="off")
+                m2.metric("Smallest act you've seen", smallest["Artist"],
+                          f"{smallest['Shows Tracked']:,} shows logged", delta_color="off")
+
+                pc1, pc2 = st.columns(2)
+                pop_cfg = {"Shows Tracked": st.column_config.NumberColumn("Shows Logged", format="%d")}
+                with pc1:
+                    st.markdown("**Biggest acts**")
+                    st.dataframe(pop_table.head(k), column_config=pop_cfg, use_container_width=True,
+                                 hide_index=True)
+                with pc2:
+                    st.markdown("**Hidden gems**")
+                    gems = pop_table.tail(k).sort_values(["Shows Tracked", "Artist"])
+                    st.dataframe(gems, column_config=pop_cfg, use_container_width=True, hide_index=True)
 
     st.divider()
 
