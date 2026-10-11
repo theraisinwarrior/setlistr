@@ -149,6 +149,11 @@ try:
     # 3. Geographic footprint map
     st.subheader("Geographic Footprint")
     st.caption("💡 Hover over or click any green pin to view venue stats!")
+    map_mode = st.radio("Map mode", ["Interactive", "Simple (better on phones)"],
+                        horizontal=True, label_visibility="collapsed",
+                        help="If the map flickers or fights with scrolling on your phone, "
+                             "use Simple: a still map plus a venue table.")
+    simple_map = map_mode.startswith("Simple")
 
     map_data = df_concerts.dropna(subset=['lat', 'long']).copy()
 
@@ -188,7 +193,18 @@ try:
         hoverlabel=dict(bgcolor="#191414", font_size=13, font_family="sans-serif",
                         font_color="#FFFFFF"),
     )
-    st.plotly_chart(fig_map, use_container_width=True)
+    fig_map.update_layout(uirevision="footprint")  # keep the zoom/position steady when the page reruns
+    if simple_map:
+        # A still image of the map: no touch handling, so no flicker and the page scrolls normally.
+        st.plotly_chart(fig_map, use_container_width=True,
+                        config={"staticPlot": True, "displayModeBar": False})
+        venue_table = (venue_summary[['venue', 'City', 'State', 'Concerts Attended', 'Most Seen Here']]
+                       .rename(columns={'venue': 'Venue'})
+                       .sort_values('Concerts Attended', ascending=False))
+        venue_table['Most Seen Here'] = venue_table['Most Seen Here'].str.replace('<br>', ', ', regex=False)
+        st.dataframe(venue_table, use_container_width=True, hide_index=True, height=300)
+    else:
+        st.plotly_chart(fig_map, use_container_width=True, config={"displaylogo": False})
 
     if venues_needing_coords is not None and not venues_needing_coords.empty:
         with st.expander(f"📍 {len(venues_needing_coords)} venue(s) need exact map coordinates"):
