@@ -51,6 +51,10 @@ def test_early_sightings_and_growth():
     assert list(t0["Artist"]) == ["Rising Star", "Too Recent", "New Opener"]
     assert t0["Growth"].tolist() == ["", "", ""]
 
+    # An act with no logged shows last year isn't shown as ×0.0
+    t2 = early_fan_table(sightings, {}, {("r1", 2018): 10, ("r1", 2025): 0}, this_year=2026)
+    assert t2.set_index("Artist").loc["Rising Star", "Growth"] == "No shows last year"
+
 
 def test_compare_histories():
     me = _rows([
