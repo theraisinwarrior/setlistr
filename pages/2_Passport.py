@@ -7,10 +7,12 @@ import streamlit as st
 
 from data.attendance import apply_venue_overrides, extract_covers, process_attendance
 from analytics.deep_cuts import global_rare_songs, scan_plan, song_frequency
+from analytics.early_fans import early_fan_table, find_early_sightings, growth_plan
 from analytics.passport_stats import compute_highlights, venue_top_performers
 from analytics.popularity import artists_to_scan, rank_artists_by_popularity
 from data.snapshots import friendly_date, load_snapshot, snapshot_bytes
 from data.store import (clear_sync_cache, get_artist_show_count, get_artist_year_setlists,
+                        get_artist_year_show_count,
                         load_csv_attendance, load_venue_overrides, sync_attended_shows)
 from services.auth import get_setlist_api_key
 from services.setlistfm import SetlistFmError
@@ -420,6 +422,87 @@ try:
                     data=snapshot_bytes("artist_popularity", pop_table),
                     help="Put this file in the snapshots folder on GitHub so these results "
                          "show instantly next time.")
+
+    st.divider()
+
+    # 4d. Saw them before they were big
+    st.subheader("🌱 Saw Them Before They Were Big")
+    st.caption("Acts you caught as an opener or lower on a festival bill. At shows with several acts, "
+               "the act that played the most songs counts as the headliner.")
+    sightings = find_early_sightings(df_att)
+    if sightings.empty:
+        st.info("No opening acts found yet.")
+    else:
+        this_year = datetime.now().year
+        show_counts = {}
+        if pop is not None and not pop["table"].empty:
+            show_counts = dict(zip(pop["table"]["Artist"], pop["table"]["Shows Tracked"]))
+
+        e1, e2 = st.columns(2)
+        e1.metric("Openers you've caught", len(sightings))
+        e2.metric("Later saw them headline", int(sightings["headline_dt"].notna().sum()))
+        for r in sightings[sightings["headline_dt"].notna()].sort_values("eventDate_dt").itertuples():
+            st.markdown(f"- **{r.artist}** opened for {r.opened_for} ({r.eventDate_dt:%b %Y}) → you later "
+                        f"saw them headline **{r.headline_venue}** ({r.headline_dt:%b %Y})")
+
+        g_plan = growth_plan(sightings, this_year)
+        early_snap = load_snapshot("early_fans")
+        if api_key_for_sync and g_plan:
+            st.caption(f"Measure how much each act has grown since you saw them: compares how many of their "
+                       f"concerts were logged on setlist.fm that year vs. last year. {len(g_plan)} lookups, about "
+                       f"{max(1, round(len(g_plan) * 0.9 / 60))} min the first time.")
+            if st.button("📈 Measure their growth", use_container_width=True):
+                year_counts, early_hit = {}, False
+                early_progress = st.progress(0.0, text="Starting...")
+                for i, (artist, mbid, year) in enumerate(g_plan):
+                    early_progress.progress(i / len(g_plan),
+                                            text=f"Checking {artist} ({year}): {i + 1} of {len(g_plan)}")
+                    try:
+                        year_counts[(mbid, year)] = get_artist_year_show_count(mbid, year, api_key_for_sync)
+                    except SetlistFmError:
+                        early_hit = True
+                        break
+                early_progress.empty()
+                st.session_state["early_result"] = {"year_counts": year_counts, "hit_limit": early_hit}
+
+        early_res = st.session_state.get("early_result")
+        early_from_snap = False
+        if early_res:
+            early_table = early_fan_table(sightings, show_counts, early_res["year_counts"], this_year)
+            if early_res["hit_limit"]:
+                st.warning("setlist.fm's request limit was hit, so growth is only partly measured. Click the "
+                           "button again in a bit; everything already checked is remembered.")
+        elif early_snap and not early_snap["table"].empty:
+            early_table, early_from_snap = early_snap["table"], True
+            st.caption(f"📌 Saved results from {friendly_date(early_snap.get('created'))}. "
+                       "Click **Measure their growth** to refresh live.")
+        else:
+            early_table = early_fan_table(sightings, show_counts, None, this_year)
+
+        grown = early_table[early_table["Growth"].fillna("") != ""]
+        if not grown.empty:
+            best = grown.iloc[0]
+            st.metric("Biggest glow-up", best["Artist"],
+                      f"{best['Growth']} as many shows a year since you saw them open for "
+                      f"{best['Opened For']} ({best['Date']})", delta_color="off")
+        st.dataframe(
+            early_table, use_container_width=True, hide_index=True, height=350,
+            column_config={
+                "Shows Logged": st.column_config.NumberColumn(
+                    "Shows Logged", format="%d", help="All their concerts logged on setlist.fm "
+                    "(from the Big Names & Hidden Gems scan)."),
+                "Shows That Year": st.column_config.NumberColumn(
+                    "Shows That Year", format="%d", help="Concerts logged the year you saw them open."),
+                "Shows Last Year": st.column_config.NumberColumn(
+                    "Shows Last Year", format="%d", help=f"Concerts logged in {this_year - 1}."),
+                "Growth": st.column_config.TextColumn(
+                    "Growth", help="Shows last year divided by shows the year you saw them."),
+            })
+        if early_res and not early_res["hit_limit"] and not early_from_snap:
+            st.download_button(
+                "💾 Save as snapshot", file_name="early_fans.json", mime="application/json",
+                data=snapshot_bytes("early_fans", early_table),
+                help="Put this file in the snapshots folder on GitHub so these results show instantly next time.")
 
     st.divider()
 

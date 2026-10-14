@@ -12,7 +12,8 @@ from datetime import datetime
 import pandas as pd
 
 SNAPSHOT_DIR = "snapshots"
-FILES = {"rare_songs": "rare_songs.json", "artist_popularity": "artist_popularity.json"}
+FILES = {"rare_songs": "rare_songs.json", "artist_popularity": "artist_popularity.json",
+         "early_fans": "early_fans.json"}
 
 
 def snapshot_bytes(kind: str, table: pd.DataFrame, now=None, **extra) -> bytes:
