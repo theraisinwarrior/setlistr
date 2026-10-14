@@ -9,6 +9,7 @@ from data.attendance import apply_venue_overrides, extract_covers, process_atten
 from analytics.deep_cuts import global_rare_songs, scan_plan, song_frequency
 from analytics.passport_stats import compute_highlights, venue_top_performers
 from analytics.popularity import artists_to_scan, rank_artists_by_popularity
+from data.snapshots import friendly_date, load_snapshot, snapshot_bytes
 from data.store import (clear_sync_cache, get_artist_show_count, get_artist_year_setlists,
                         load_csv_attendance, load_venue_overrides, sync_attended_shows)
 from services.auth import get_setlist_api_key
@@ -259,10 +260,13 @@ try:
             scope_att = df_att if min_year is None else df_att[df_att['year'] >= min_year]
             plan = scan_plan(scope_att)
 
+            rare_snap = load_snapshot("rare_songs")
             if not api_key_for_sync:
-                st.warning("Add a Setlist.fm API key to find rare songs.")
+                if not rare_snap:
+                    st.warning("Add a Setlist.fm API key to find rare songs.")
             elif not plan:
-                st.info("Nothing to scan in that range. This needs the live setlist.fm sync.")
+                if not rare_snap:
+                    st.info("Nothing to scan in that range. This needs the live setlist.fm sync.")
             else:
                 st.caption(f"{len(plan)} artist-years to check, about "
                            f"{max(1, round(len(plan) * 0.9 / 60))} min the first time. "
@@ -282,29 +286,44 @@ try:
                     progress.empty()
                     table, stats = global_rare_songs(scope_att, samples)
                     st.session_state["rare_result"] = {"table": table, "stats": stats,
-                                                       "hit_limit": hit_limit}
+                                                       "hit_limit": hit_limit, "scope": scope}
 
-                res = st.session_state.get("rare_result")
-                if res:
-                    table, stats = res["table"], res["stats"]
-                    if res["hit_limit"]:
-                        st.warning("setlist.fm's request limit was hit, so this list is partial. "
-                                   "Click the button again in a bit; everything already checked is remembered.")
-                    if table.empty:
-                        st.info("No songs could be scored. setlist.fm may not have enough setlists for these artists.")
-                    else:
-                        max_pct = st.slider("Show songs played in at most this % of that year's shows",
-                                            5, 50, 15, step=5)
-                        shown = table[table['pct'] <= max_pct]
-                        top = table.iloc[0]
-                        st.metric("Rarest song you've heard", top['Song'],
-                                  f"{top['Artist']} ({top['Played In']})", delta_color="off")
-                        st.success(f"{len(shown)} rare songs found across {stats['scored_shows']} concerts.")
-                        st.dataframe(shown[['Song', 'Artist', 'Heard On', 'Played In', 'Frequency']].head(300),
-                                     use_container_width=True, hide_index=True, height=300)
-                        if stats['skipped_shows']:
-                            st.caption(f"{stats['skipped_shows']} concert(s) were skipped: setlist.fm had "
-                                       "fewer than 8 setlists for that artist that year, or they couldn't be checked.")
+            res = st.session_state.get("rare_result")
+            if res is None and rare_snap and not rare_snap["table"].empty:
+                res = {"table": rare_snap["table"],
+                       "stats": rare_snap.get("stats") or {"scored_shows": 0, "skipped_shows": 0},
+                       "hit_limit": False, "snapshot": rare_snap}
+            if res:
+                table, stats = res["table"], res["stats"]
+                if res.get("snapshot"):
+                    snap = res["snapshot"]
+                    st.caption(f"📌 Saved results from {friendly_date(snap.get('created'))} "
+                               f"({snap.get('scope') or 'saved scan'}). Click **Find my rarest songs** "
+                               "to re-scan live.")
+                if res["hit_limit"]:
+                    st.warning("setlist.fm's request limit was hit, so this list is partial. "
+                               "Click the button again in a bit; everything already checked is remembered.")
+                if table.empty:
+                    st.info("No songs could be scored. setlist.fm may not have enough setlists for these artists.")
+                else:
+                    max_pct = st.slider("Show songs played in at most this % of that year's shows",
+                                        5, 50, 15, step=5)
+                    shown = table[table['pct'] <= max_pct]
+                    top = table.iloc[0]
+                    st.metric("Rarest song you've heard", top['Song'],
+                              f"{top['Artist']} ({top['Played In']})", delta_color="off")
+                    st.success(f"{len(shown)} rare songs found across {stats['scored_shows']} concerts.")
+                    st.dataframe(shown[['Song', 'Artist', 'Heard On', 'Played In', 'Frequency']].head(300),
+                                 use_container_width=True, hide_index=True, height=300)
+                    if stats.get('skipped_shows'):
+                        st.caption(f"{stats['skipped_shows']} concert(s) were skipped: setlist.fm had "
+                                   "fewer than 8 setlists for that artist that year, or they couldn't be checked.")
+                    if not res.get("snapshot") and not res["hit_limit"]:
+                        st.download_button(
+                            "💾 Save as snapshot", file_name="rare_songs.json", mime="application/json",
+                            data=snapshot_bytes("rare_songs", table, stats=stats, scope=res.get("scope")),
+                            help="Put this file in the snapshots folder on GitHub so these results "
+                                 "show instantly next time.")
 
         st.divider()
 
@@ -336,10 +355,13 @@ try:
                "thousands; small bands have a handful.")
 
     pop_plan = artists_to_scan(df_att)
+    pop_snap = load_snapshot("artist_popularity")
     if not api_key_for_sync:
-        st.warning("Add a Setlist.fm API key to rank your artists.")
+        if not pop_snap:
+            st.warning("Add a Setlist.fm API key to rank your artists.")
     elif not pop_plan:
-        st.info("This needs the live setlist.fm sync (the saved CSV has no artist IDs).")
+        if not pop_snap:
+            st.info("This needs the live setlist.fm sync (the saved CSV has no artist IDs).")
     else:
         st.caption(f"{len(pop_plan)} artists to check, about {max(1, round(len(pop_plan) * 0.9 / 60))} "
                    "min the first time. Results are remembered for a week.")
@@ -360,33 +382,44 @@ try:
                 "hit_limit": pop_hit_limit,
             }
 
-        pop = st.session_state.get("pop_result")
-        if pop:
-            pop_table = pop["table"]
-            if pop["hit_limit"]:
-                st.warning("setlist.fm's request limit was hit, so this list is partial. Click the button "
-                           "again in a bit; everything already checked is remembered.")
-            if pop_table.empty:
-                st.info("No artists could be ranked yet.")
-            else:
-                k = min(10, max(1, len(pop_table) // 2))
-                biggest, smallest = pop_table.iloc[0], pop_table.iloc[-1]
-                m1, m2 = st.columns(2)
-                m1.metric("Biggest act you've seen", biggest["Artist"],
-                          f"{biggest['Shows Tracked']:,} shows logged", delta_color="off")
-                m2.metric("Smallest act you've seen", smallest["Artist"],
-                          f"{smallest['Shows Tracked']:,} shows logged", delta_color="off")
+    pop = st.session_state.get("pop_result")
+    if pop is None and pop_snap and not pop_snap["table"].empty:
+        pop = {"table": pop_snap["table"], "hit_limit": False, "snapshot": pop_snap}
+    if pop:
+        pop_table = pop["table"]
+        if pop.get("snapshot"):
+            st.caption(f"📌 Saved results from {friendly_date(pop['snapshot'].get('created'))}. "
+                       "Click **Rank my artists by popularity** to refresh live.")
+        if pop["hit_limit"]:
+            st.warning("setlist.fm's request limit was hit, so this list is partial. Click the button "
+                       "again in a bit; everything already checked is remembered.")
+        if pop_table.empty:
+            st.info("No artists could be ranked yet.")
+        else:
+            k = min(10, max(1, len(pop_table) // 2))
+            biggest, smallest = pop_table.iloc[0], pop_table.iloc[-1]
+            m1, m2 = st.columns(2)
+            m1.metric("Biggest act you've seen", biggest["Artist"],
+                      f"{int(biggest['Shows Tracked']):,} shows logged", delta_color="off")
+            m2.metric("Smallest act you've seen", smallest["Artist"],
+                      f"{int(smallest['Shows Tracked']):,} shows logged", delta_color="off")
 
-                pc1, pc2 = st.columns(2)
-                pop_cfg = {"Shows Tracked": st.column_config.NumberColumn("Shows Logged", format="%d")}
-                with pc1:
-                    st.markdown("**Biggest acts**")
-                    st.dataframe(pop_table.head(k), column_config=pop_cfg, use_container_width=True,
-                                 hide_index=True)
-                with pc2:
-                    st.markdown("**Hidden gems**")
-                    gems = pop_table.tail(k).sort_values(["Shows Tracked", "Artist"])
-                    st.dataframe(gems, column_config=pop_cfg, use_container_width=True, hide_index=True)
+            pc1, pc2 = st.columns(2)
+            pop_cfg = {"Shows Tracked": st.column_config.NumberColumn("Shows Logged", format="%d")}
+            with pc1:
+                st.markdown("**Biggest acts**")
+                st.dataframe(pop_table.head(k), column_config=pop_cfg, use_container_width=True,
+                             hide_index=True)
+            with pc2:
+                st.markdown("**Hidden gems**")
+                gems = pop_table.tail(k).sort_values(["Shows Tracked", "Artist"])
+                st.dataframe(gems, column_config=pop_cfg, use_container_width=True, hide_index=True)
+            if not pop.get("snapshot") and not pop["hit_limit"]:
+                st.download_button(
+                    "💾 Save as snapshot", file_name="artist_popularity.json", mime="application/json",
+                    data=snapshot_bytes("artist_popularity", pop_table),
+                    help="Put this file in the snapshots folder on GitHub so these results "
+                         "show instantly next time.")
 
     st.divider()
 

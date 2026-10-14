@@ -146,3 +146,25 @@ def test_rank_artists_by_popularity():
     assert table.iloc[0]["Times Seen"] == 2 and table.iloc[0]["Last Seen"] == "Jun 01, 2024"
     assert table.iloc[1]["Shows Tracked"] == 7
     assert rank_artists_by_popularity(df_att, {}).empty
+
+
+def test_snapshot_round_trip(tmp_path=None):
+    import os
+    import tempfile
+    from data.snapshots import load_snapshot, parse_snapshot, snapshot_bytes
+    table = pd.DataFrame([{"Song": "Bustout", "Artist": "Band A", "Heard On": "May 01, 2024",
+                           "Venue": "V1", "Played In": "1 of 20 shows in 2024", "pct": 5.0, "n": 20,
+                           "Frequency": "5%"}])
+    raw = snapshot_bytes("rare_songs", table, now=datetime(2026, 10, 14),
+                         stats={"scored_shows": 2, "skipped_shows": 1}, scope="All time")
+    snap = parse_snapshot(raw, "rare_songs")
+    assert snap["created"] == "2026-10-14" and snap["scope"] == "All time"
+    assert snap["stats"] == {"scored_shows": 2, "skipped_shows": 1}
+    assert snap["table"].iloc[0]["Song"] == "Bustout" and snap["table"].iloc[0]["pct"] == 5.0
+    assert parse_snapshot(raw, "artist_popularity") is None      # wrong kind is rejected
+    assert parse_snapshot(b"not json", "rare_songs") is None
+    folder = tempfile.mkdtemp()
+    assert load_snapshot("rare_songs", folder=folder) is None    # missing file is fine
+    with open(os.path.join(folder, "rare_songs.json"), "wb") as f:
+        f.write(raw)
+    assert len(load_snapshot("rare_songs", folder=folder)["table"]) == 1
