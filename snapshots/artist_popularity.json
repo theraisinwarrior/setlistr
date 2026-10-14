@@ -1,0 +1,810 @@
+{
+ "kind": "artist_popularity",
+ "created": "2026-10-14",
+ "rows": [
+  {
+   "Artist": "Willie Nelson",
+   "Shows Tracked": 5234,
+   "Times Seen": 1,
+   "Last Seen": "Sep 08, 2017"
+  },
+  {
+   "Artist": "Bob Dylan",
+   "Shows Tracked": 4154,
+   "Times Seen": 1,
+   "Last Seen": "Jul 21, 2026"
+  },
+  {
+   "Artist": "The Doobie Brothers",
+   "Shows Tracked": 3165,
+   "Times Seen": 1,
+   "Last Seen": "Jun 28, 2009"
+  },
+  {
+   "Artist": "Bruce Springsteen",
+   "Shows Tracked": 3002,
+   "Times Seen": 1,
+   "Last Seen": "May 14, 2026"
+  },
+  {
+   "Artist": "Mot\u00f6rhead",
+   "Shows Tracked": 2779,
+   "Times Seen": 1,
+   "Last Seen": "Aug 10, 2008"
+  },
+  {
+   "Artist": "Jimmy Buffett",
+   "Shows Tracked": 2769,
+   "Times Seen": 2,
+   "Last Seen": "Aug 15, 2017"
+  },
+  {
+   "Artist": "Buddy Guy",
+   "Shows Tracked": 2754,
+   "Times Seen": 1,
+   "Last Seen": "Oct 01, 2026"
+  },
+  {
+   "Artist": "Judas Priest",
+   "Shows Tracked": 2718,
+   "Times Seen": 1,
+   "Last Seen": "Aug 10, 2008"
+  },
+  {
+   "Artist": "Dropkick Murphys",
+   "Shows Tracked": 2619,
+   "Times Seen": 1,
+   "Last Seen": "Sep 15, 2007"
+  },
+  {
+   "Artist": "Sheryl Crow",
+   "Shows Tracked": 2240,
+   "Times Seen": 1,
+   "Last Seen": "Sep 08, 2017"
+  },
+  {
+   "Artist": "Various Artists",
+   "Shows Tracked": 2136,
+   "Times Seen": 1,
+   "Last Seen": "Oct 01, 2026"
+  },
+  {
+   "Artist": "Modest Mouse",
+   "Shows Tracked": 1706,
+   "Times Seen": 1,
+   "Last Seen": "Oct 15, 2019"
+  },
+  {
+   "Artist": "Queens of the Stone Age",
+   "Shows Tracked": 1639,
+   "Times Seen": 2,
+   "Last Seen": "Aug 13, 2026"
+  },
+  {
+   "Artist": "Foo Fighters",
+   "Shows Tracked": 1625,
+   "Times Seen": 1,
+   "Last Seen": "Aug 13, 2026"
+  },
+  {
+   "Artist": "Eagles",
+   "Shows Tracked": 1611,
+   "Times Seen": 1,
+   "Last Seen": "May 31, 2008"
+  },
+  {
+   "Artist": "Depeche Mode",
+   "Shows Tracked": 1537,
+   "Times Seen": 1,
+   "Last Seen": "Aug 03, 2009"
+  },
+  {
+   "Artist": "John Fogerty",
+   "Shows Tracked": 1295,
+   "Times Seen": 1,
+   "Last Seen": "Nov 12, 2025"
+  },
+  {
+   "Artist": "Tedeschi Trucks Band",
+   "Shows Tracked": 1244,
+   "Times Seen": 3,
+   "Last Seen": "Mar 18, 2026"
+  },
+  {
+   "Artist": "Lady Gaga",
+   "Shows Tracked": 1220,
+   "Times Seen": 1,
+   "Last Seen": "Mar 19, 2026"
+  },
+  {
+   "Artist": "The Black Keys",
+   "Shows Tracked": 1220,
+   "Times Seen": 3,
+   "Last Seen": "Jul 22, 2022"
+  },
+  {
+   "Artist": "Band of Horses",
+   "Shows Tracked": 1217,
+   "Times Seen": 1,
+   "Last Seen": "Jul 22, 2022"
+  },
+  {
+   "Artist": "Mumford & Sons",
+   "Shows Tracked": 1188,
+   "Times Seen": 1,
+   "Last Seen": "Aug 11, 2026"
+  },
+  {
+   "Artist": "Taylor Swift",
+   "Shows Tracked": 1153,
+   "Times Seen": 5,
+   "Last Seen": "May 27, 2023"
+  },
+  {
+   "Artist": "Bad Company",
+   "Shows Tracked": 1114,
+   "Times Seen": 1,
+   "Last Seen": "Jun 28, 2009"
+  },
+  {
+   "Artist": "Cage the Elephant",
+   "Shows Tracked": 1054,
+   "Times Seen": 1,
+   "Last Seen": "Sep 24, 2014"
+  },
+  {
+   "Artist": "Mac DeMarco",
+   "Shows Tracked": 1043,
+   "Times Seen": 1,
+   "Last Seen": "Dec 31, 2019"
+  },
+  {
+   "Artist": "Linkin Park",
+   "Shows Tracked": 1042,
+   "Times Seen": 1,
+   "Last Seen": "Jul 29, 2025"
+  },
+  {
+   "Artist": "Gary Clark Jr.",
+   "Shows Tracked": 1015,
+   "Times Seen": 1,
+   "Last Seen": "Jun 03, 2026"
+  },
+  {
+   "Artist": "Beach House",
+   "Shows Tracked": 1007,
+   "Times Seen": 1,
+   "Last Seen": "Oct 02, 2026"
+  },
+  {
+   "Artist": "St. Paul & The Broken Bones",
+   "Shows Tracked": 940,
+   "Times Seen": 3,
+   "Last Seen": "Apr 25, 2026"
+  },
+  {
+   "Artist": "The Revivalists",
+   "Shows Tracked": 891,
+   "Times Seen": 1,
+   "Last Seen": "Jan 16, 2019"
+  },
+  {
+   "Artist": "Charli xcx",
+   "Shows Tracked": 823,
+   "Times Seen": 1,
+   "Last Seen": "Jul 21, 2018"
+  },
+  {
+   "Artist": "Goose",
+   "Shows Tracked": 819,
+   "Times Seen": 1,
+   "Last Seen": "Jul 02, 2026"
+  },
+  {
+   "Artist": "Preservation Hall Jazz Band",
+   "Shows Tracked": 774,
+   "Times Seen": 1,
+   "Last Seen": "Dec 02, 2025"
+  },
+  {
+   "Artist": "Lake Street Dive",
+   "Shows Tracked": 767,
+   "Times Seen": 7,
+   "Last Seen": "Aug 01, 2026"
+  },
+  {
+   "Artist": "Waxahatchee",
+   "Shows Tracked": 763,
+   "Times Seen": 1,
+   "Last Seen": "Jul 30, 2025"
+  },
+  {
+   "Artist": "Vampire Weekend",
+   "Shows Tracked": 746,
+   "Times Seen": 4,
+   "Last Seen": "Sep 16, 2025"
+  },
+  {
+   "Artist": "The Strokes",
+   "Shows Tracked": 735,
+   "Times Seen": 2,
+   "Last Seen": "Oct 02, 2026"
+  },
+  {
+   "Artist": "Phantogram",
+   "Shows Tracked": 724,
+   "Times Seen": 1,
+   "Last Seen": "Aug 12, 2023"
+  },
+  {
+   "Artist": "Bombay Bicycle Club",
+   "Shows Tracked": 697,
+   "Times Seen": 1,
+   "Last Seen": "Oct 22, 2014"
+  },
+  {
+   "Artist": "TV on the Radio",
+   "Shows Tracked": 694,
+   "Times Seen": 1,
+   "Last Seen": "Oct 02, 2026"
+  },
+  {
+   "Artist": "Dua Lipa",
+   "Shows Tracked": 650,
+   "Times Seen": 1,
+   "Last Seen": "Sep 18, 2025"
+  },
+  {
+   "Artist": "Lord Huron",
+   "Shows Tracked": 644,
+   "Times Seen": 1,
+   "Last Seen": "Jul 30, 2025"
+  },
+  {
+   "Artist": "Mt. Joy",
+   "Shows Tracked": 625,
+   "Times Seen": 3,
+   "Last Seen": "Sep 17, 2026"
+  },
+  {
+   "Artist": "Vance Joy",
+   "Shows Tracked": 615,
+   "Times Seen": 1,
+   "Last Seen": "Jul 10, 2015"
+  },
+  {
+   "Artist": "Japanese Breakfast",
+   "Shows Tracked": 605,
+   "Times Seen": 1,
+   "Last Seen": "Sep 24, 2025"
+  },
+  {
+   "Artist": "Kaleo",
+   "Shows Tracked": 590,
+   "Times Seen": 1,
+   "Last Seen": "Sep 14, 2025"
+  },
+  {
+   "Artist": "Leon Bridges",
+   "Shows Tracked": 584,
+   "Times Seen": 1,
+   "Last Seen": "Oct 06, 2018"
+  },
+  {
+   "Artist": "Phoebe Bridgers",
+   "Shows Tracked": 584,
+   "Times Seen": 3,
+   "Last Seen": "Jun 04, 2026"
+  },
+  {
+   "Artist": "HAIM",
+   "Shows Tracked": 579,
+   "Times Seen": 1,
+   "Last Seen": "Jul 10, 2015"
+  },
+  {
+   "Artist": "Passion Pit",
+   "Shows Tracked": 579,
+   "Times Seen": 1,
+   "Last Seen": "Jan 13, 2018"
+  },
+  {
+   "Artist": "Hinds",
+   "Shows Tracked": 573,
+   "Times Seen": 1,
+   "Last Seen": "Dec 31, 2019"
+  },
+  {
+   "Artist": "Noah Kahan",
+   "Shows Tracked": 571,
+   "Times Seen": 1,
+   "Last Seen": "Jul 19, 2026"
+  },
+  {
+   "Artist": "Fleet Foxes",
+   "Shows Tracked": 548,
+   "Times Seen": 1,
+   "Last Seen": "Aug 02, 2017"
+  },
+  {
+   "Artist": "American Authors",
+   "Shows Tracked": 544,
+   "Times Seen": 1,
+   "Last Seen": "Jan 16, 2019"
+  },
+  {
+   "Artist": "Whitney",
+   "Shows Tracked": 539,
+   "Times Seen": 2,
+   "Last Seen": "Apr 09, 2026"
+  },
+  {
+   "Artist": "Shawn Mendes",
+   "Shows Tracked": 530,
+   "Times Seen": 1,
+   "Last Seen": "Jul 10, 2015"
+  },
+  {
+   "Artist": "Snail Mail",
+   "Shows Tracked": 522,
+   "Times Seen": 1,
+   "Last Seen": "Nov 30, 2018"
+  },
+  {
+   "Artist": "Sabrina Carpenter",
+   "Shows Tracked": 480,
+   "Times Seen": 1,
+   "Last Seen": "Oct 29, 2025"
+  },
+  {
+   "Artist": "Alabama Shakes",
+   "Shows Tracked": 460,
+   "Times Seen": 2,
+   "Last Seen": "Sep 17, 2025"
+  },
+  {
+   "Artist": "Lorde",
+   "Shows Tracked": 456,
+   "Times Seen": 2,
+   "Last Seen": "Dec 17, 2025"
+  },
+  {
+   "Artist": "Jamie xx",
+   "Shows Tracked": 452,
+   "Times Seen": 1,
+   "Last Seen": "Sep 16, 2026"
+  },
+  {
+   "Artist": "The Japanese House",
+   "Shows Tracked": 425,
+   "Times Seen": 1,
+   "Last Seen": "Oct 01, 2025"
+  },
+  {
+   "Artist": "Oh Wonder",
+   "Shows Tracked": 405,
+   "Times Seen": 1,
+   "Last Seen": "Apr 13, 2026"
+  },
+  {
+   "Artist": "Jessie Ware",
+   "Shows Tracked": 387,
+   "Times Seen": 1,
+   "Last Seen": "Oct 08, 2026"
+  },
+  {
+   "Artist": "Maggie Rogers",
+   "Shows Tracked": 376,
+   "Times Seen": 2,
+   "Last Seen": "Aug 17, 2017"
+  },
+  {
+   "Artist": "Harry Styles",
+   "Shows Tracked": 375,
+   "Times Seen": 1,
+   "Last Seen": "Sep 16, 2026"
+  },
+  {
+   "Artist": "Masayoshi Takanaka",
+   "Shows Tracked": 362,
+   "Times Seen": 1,
+   "Last Seen": "Apr 04, 2026"
+  },
+  {
+   "Artist": "Lawrence",
+   "Shows Tracked": 359,
+   "Times Seen": 2,
+   "Last Seen": "Oct 30, 2025"
+  },
+  {
+   "Artist": "Tommy James & the Shondells",
+   "Shows Tracked": 349,
+   "Times Seen": 1,
+   "Last Seen": "Aug 14, 2025"
+  },
+  {
+   "Artist": "Chappell Roan",
+   "Shows Tracked": 346,
+   "Times Seen": 1,
+   "Last Seen": "Sep 24, 2025"
+  },
+  {
+   "Artist": "The Teskey Brothers",
+   "Shows Tracked": 329,
+   "Times Seen": 1,
+   "Last Seen": "Jun 18, 2024"
+  },
+  {
+   "Artist": "Gracie Abrams",
+   "Shows Tracked": 301,
+   "Times Seen": 1,
+   "Last Seen": "May 27, 2023"
+  },
+  {
+   "Artist": "HONNE",
+   "Shows Tracked": 301,
+   "Times Seen": 1,
+   "Last Seen": "Jun 12, 2026"
+  },
+  {
+   "Artist": "The Backseat Lovers",
+   "Shows Tracked": 290,
+   "Times Seen": 1,
+   "Last Seen": "Jun 05, 2025"
+  },
+  {
+   "Artist": "State Radio",
+   "Shows Tracked": 262,
+   "Times Seen": 1,
+   "Last Seen": "Jan 28, 2010"
+  },
+  {
+   "Artist": "Wilderado",
+   "Shows Tracked": 261,
+   "Times Seen": 1,
+   "Last Seen": "Oct 27, 2018"
+  },
+  {
+   "Artist": "Camila Cabello",
+   "Shows Tracked": 254,
+   "Times Seen": 1,
+   "Last Seen": "Jul 21, 2018"
+  },
+  {
+   "Artist": "Del Water Gap",
+   "Shows Tracked": 241,
+   "Times Seen": 1,
+   "Last Seen": "Jan 22, 2026"
+  },
+  {
+   "Artist": "Olivia Dean",
+   "Shows Tracked": 233,
+   "Times Seen": 1,
+   "Last Seen": "Oct 29, 2025"
+  },
+  {
+   "Artist": "Jalen Ngonda",
+   "Shows Tracked": 207,
+   "Times Seen": 3,
+   "Last Seen": "Jun 08, 2026"
+  },
+  {
+   "Artist": "Medium Build",
+   "Shows Tracked": 202,
+   "Times Seen": 1,
+   "Last Seen": "Aug 11, 2026"
+  },
+  {
+   "Artist": "Fcukers",
+   "Shows Tracked": 194,
+   "Times Seen": 1,
+   "Last Seen": "Oct 02, 2026"
+  },
+  {
+   "Artist": "The Main Squeeze",
+   "Shows Tracked": 187,
+   "Times Seen": 1,
+   "Last Seen": "Mar 14, 2025"
+  },
+  {
+   "Artist": "Mikaela Davis",
+   "Shows Tracked": 182,
+   "Times Seen": 1,
+   "Last Seen": "May 10, 2018"
+  },
+  {
+   "Artist": "The Dip",
+   "Shows Tracked": 178,
+   "Times Seen": 3,
+   "Last Seen": "Aug 01, 2026"
+  },
+  {
+   "Artist": "Melt",
+   "Shows Tracked": 170,
+   "Times Seen": 2,
+   "Last Seen": "Jan 24, 2026"
+  },
+  {
+   "Artist": "Heaven & Hell",
+   "Shows Tracked": 161,
+   "Times Seen": 1,
+   "Last Seen": "Aug 10, 2008"
+  },
+  {
+   "Artist": "Mattiel",
+   "Shows Tracked": 151,
+   "Times Seen": 1,
+   "Last Seen": "Oct 04, 2018"
+  },
+  {
+   "Artist": "Vulfpeck",
+   "Shows Tracked": 149,
+   "Times Seen": 1,
+   "Last Seen": "Sep 13, 2025"
+  },
+  {
+   "Artist": "Trousdale",
+   "Shows Tracked": 145,
+   "Times Seen": 1,
+   "Last Seen": "Jun 18, 2024"
+  },
+  {
+   "Artist": "Gigi Perez",
+   "Shows Tracked": 133,
+   "Times Seen": 1,
+   "Last Seen": "Jul 19, 2026"
+  },
+  {
+   "Artist": "Quarters",
+   "Shows Tracked": 133,
+   "Times Seen": 1,
+   "Last Seen": "Sep 14, 2025"
+  },
+  {
+   "Artist": "GAYLE",
+   "Shows Tracked": 123,
+   "Times Seen": 1,
+   "Last Seen": "May 26, 2023"
+  },
+  {
+   "Artist": "Cayucas",
+   "Shows Tracked": 119,
+   "Times Seen": 1,
+   "Last Seen": "Jul 15, 2019"
+  },
+  {
+   "Artist": "Milo Greene",
+   "Shows Tracked": 118,
+   "Times Seen": 1,
+   "Last Seen": "Oct 22, 2014"
+  },
+  {
+   "Artist": "Amber Mark",
+   "Shows Tracked": 111,
+   "Times Seen": 1,
+   "Last Seen": "Oct 29, 2025"
+  },
+  {
+   "Artist": "Hearty Har",
+   "Shows Tracked": 110,
+   "Times Seen": 1,
+   "Last Seen": "Nov 12, 2025"
+  },
+  {
+   "Artist": "Greyhounds",
+   "Shows Tracked": 96,
+   "Times Seen": 2,
+   "Last Seen": "May 31, 2018"
+  },
+  {
+   "Artist": "Infinity Song",
+   "Shows Tracked": 96,
+   "Times Seen": 1,
+   "Last Seen": "Sep 14, 2024"
+  },
+  {
+   "Artist": "Das Racist",
+   "Shows Tracked": 95,
+   "Times Seen": 1,
+   "Last Seen": "Feb 10, 2012"
+  },
+  {
+   "Artist": "Thee Sinseers",
+   "Shows Tracked": 93,
+   "Times Seen": 1,
+   "Last Seen": "Apr 25, 2026"
+  },
+  {
+   "Artist": "MARIS",
+   "Shows Tracked": 90,
+   "Times Seen": 1,
+   "Last Seen": "Nov 16, 2024"
+  },
+  {
+   "Artist": "Liz Cooper & the Stampede",
+   "Shows Tracked": 85,
+   "Times Seen": 3,
+   "Last Seen": "Feb 27, 2019"
+  },
+  {
+   "Artist": "J\u00fan\u00edus Meyvant",
+   "Shows Tracked": 84,
+   "Times Seen": 1,
+   "Last Seen": "Sep 14, 2025"
+  },
+  {
+   "Artist": "Wrabel",
+   "Shows Tracked": 75,
+   "Times Seen": 1,
+   "Last Seen": "Apr 13, 2026"
+  },
+  {
+   "Artist": "Robert Randolph",
+   "Shows Tracked": 72,
+   "Times Seen": 1,
+   "Last Seen": "Mar 18, 2026"
+  },
+  {
+   "Artist": "Sure Sure",
+   "Shows Tracked": 72,
+   "Times Seen": 1,
+   "Last Seen": "Oct 27, 2018"
+  },
+  {
+   "Artist": "Palmyra",
+   "Shows Tracked": 65,
+   "Times Seen": 1,
+   "Last Seen": "Jun 05, 2025"
+  },
+  {
+   "Artist": "Harts",
+   "Shows Tracked": 64,
+   "Times Seen": 1,
+   "Last Seen": "Aug 05, 2017"
+  },
+  {
+   "Artist": "Katie Tupper",
+   "Shows Tracked": 56,
+   "Times Seen": 1,
+   "Last Seen": "May 14, 2025"
+  },
+  {
+   "Artist": "Hannah Jadagu",
+   "Shows Tracked": 54,
+   "Times Seen": 1,
+   "Last Seen": "Jan 22, 2026"
+  },
+  {
+   "Artist": "Annabelle Dinda",
+   "Shows Tracked": 52,
+   "Times Seen": 1,
+   "Last Seen": "Jul 19, 2026"
+  },
+  {
+   "Artist": "Bhi Bhiman",
+   "Shows Tracked": 50,
+   "Times Seen": 1,
+   "Last Seen": "Aug 30, 2025"
+  },
+  {
+   "Artist": "Nat Myers",
+   "Shows Tracked": 48,
+   "Times Seen": 1,
+   "Last Seen": "Jun 03, 2026"
+  },
+  {
+   "Artist": "Liz Cooper",
+   "Shows Tracked": 47,
+   "Times Seen": 1,
+   "Last Seen": "Oct 28, 2025"
+  },
+  {
+   "Artist": "Raveena",
+   "Shows Tracked": 47,
+   "Times Seen": 1,
+   "Last Seen": "Sep 15, 2019"
+  },
+  {
+   "Artist": "Valley Queen",
+   "Shows Tracked": 46,
+   "Times Seen": 2,
+   "Last Seen": "Oct 03, 2018"
+  },
+  {
+   "Artist": "dhruv",
+   "Shows Tracked": 39,
+   "Times Seen": 1,
+   "Last Seen": "Oct 08, 2026"
+  },
+  {
+   "Artist": "Tor Miller",
+   "Shows Tracked": 37,
+   "Times Seen": 1,
+   "Last Seen": "Aug 17, 2017"
+  },
+  {
+   "Artist": "Brother Wallace",
+   "Shows Tracked": 33,
+   "Times Seen": 1,
+   "Last Seen": "Apr 25, 2026"
+  },
+  {
+   "Artist": "Olivia Barton",
+   "Shows Tracked": 30,
+   "Times Seen": 1,
+   "Last Seen": "Jan 24, 2026"
+  },
+  {
+   "Artist": "Future Generations",
+   "Shows Tracked": 21,
+   "Times Seen": 1,
+   "Last Seen": "Aug 05, 2017"
+  },
+  {
+   "Artist": "Atta Boy",
+   "Shows Tracked": 17,
+   "Times Seen": 1,
+   "Last Seen": "Sep 11, 2025"
+  },
+  {
+   "Artist": "Dari Bay",
+   "Shows Tracked": 17,
+   "Times Seen": 1,
+   "Last Seen": "Apr 09, 2026"
+  },
+  {
+   "Artist": "Keenan O'Meara",
+   "Shows Tracked": 15,
+   "Times Seen": 1,
+   "Last Seen": "Sep 11, 2025"
+  },
+  {
+   "Artist": "Jacob Jeffries",
+   "Shows Tracked": 14,
+   "Times Seen": 1,
+   "Last Seen": "Oct 30, 2025"
+  },
+  {
+   "Artist": "Atomic Habitz",
+   "Shows Tracked": 13,
+   "Times Seen": 1,
+   "Last Seen": "Mar 13, 2026"
+  },
+  {
+   "Artist": "Everybody Out!",
+   "Shows Tracked": 12,
+   "Times Seen": 1,
+   "Last Seen": "Sep 15, 2007"
+  },
+  {
+   "Artist": "Antwaun Stanley",
+   "Shows Tracked": 10,
+   "Times Seen": 1,
+   "Last Seen": "Mar 14, 2025"
+  },
+  {
+   "Artist": "El Michels Affair",
+   "Shows Tracked": 10,
+   "Times Seen": 1,
+   "Last Seen": "Sep 17, 2025"
+  },
+  {
+   "Artist": "Private Island",
+   "Shows Tracked": 5,
+   "Times Seen": 1,
+   "Last Seen": "Aug 05, 2017"
+  },
+  {
+   "Artist": "Sophisticuffs",
+   "Shows Tracked": 4,
+   "Times Seen": 2,
+   "Last Seen": "Sep 16, 2025"
+  },
+  {
+   "Artist": "Sun Parade",
+   "Shows Tracked": 1,
+   "Times Seen": 1,
+   "Last Seen": "Jun 28, 2017"
+  }
+ ]
+}
