@@ -3,19 +3,23 @@ from datetime import datetime
 
 import pandas as pd
 import plotly.express as px
+import spotipy
 import streamlit as st
 
 from data.attendance import apply_venue_overrides, extract_covers, process_attendance
 from analytics.deep_cuts import global_rare_songs, scan_plan, song_frequency
 from analytics.early_fans import early_fan_table, find_early_sightings, growth_plan
+from analytics.nights import night_options, night_playlist_name, night_tracklist
 from analytics.passport_stats import compute_highlights, venue_top_performers
 from analytics.popularity import artists_to_scan, rank_artists_by_popularity
 from data.snapshots import friendly_date, load_snapshot, snapshot_bytes
 from data.store import (clear_sync_cache, get_artist_show_count, get_artist_year_setlists,
                         get_artist_year_show_count,
                         load_csv_attendance, load_venue_overrides, sync_attended_shows)
-from services.auth import get_setlist_api_key
+from services.auth import (get_active_token, get_authorize_url, get_setlist_api_key,
+                           is_spotify_connected)
 from services.setlistfm import SetlistFmError
+from services.spotify_export import create_playlist
 
 SPOTIFY_GREEN = "#1DB954"
 
@@ -503,6 +507,58 @@ try:
                 "💾 Save as snapshot", file_name="early_fans.json", mime="application/json",
                 data=snapshot_bytes("early_fans", early_table),
                 help="Put this file in the snapshots folder on GitHub so these results show instantly next time.")
+
+    st.divider()
+
+    # 4e. Relive a night
+    st.subheader("🎟️ Relive a Night")
+    st.caption("Pick any concert you went to and turn that night's setlist into a Spotify playlist, "
+               "in the order it was played.")
+    nights = night_options(df_att)
+    if not nights:
+        st.info("Setlists for your concerts come from the setlist.fm sync, and none were found.")
+    else:
+        night_labels = [n["label"] for n in nights]
+        night_pick = st.selectbox("Concert", night_labels, key="relive_pick")
+        night = nights[night_labels.index(night_pick)]
+        relive_openers = st.checkbox("Include opening acts", value=True, key="relive_openers")
+        night_tracks = night_tracklist(df_att, night["day"], night["venue"], relive_openers)
+        st.dataframe(night_tracks.drop(columns="Original"), hide_index=True, use_container_width=True,
+                     height=min(400, 38 + 35 * len(night_tracks)))
+
+        if not is_spotify_connected():
+            st.info("Connect Spotify in the sidebar to save this night as a playlist.")
+            st.link_button("🎵 Connect Spotify", get_authorize_url())
+        elif st.button(f"✨ Create playlist ({len(night_tracks)} songs)", use_container_width=True,
+                       key="relive_go"):
+            with st.spinner("Searching Spotify and building your playlist..."):
+                try:
+                    relive_token = get_active_token()
+                    if not relive_token:
+                        st.error("Couldn't get a Spotify login. Reconnect in the sidebar.")
+                    else:
+                        relive_name = night_playlist_name(night["headliner"], night["venue"], night["day"])
+                        playlist, relive_report = create_playlist(
+                            spotipy.Spotify(auth=relive_token),
+                            [{"artist": r.Artist, "song": r.Song, "original": r.Original}
+                             for r in night_tracks.itertuples()],
+                            relive_name, description="The setlist from a night I was there. Made with Setlistr.")
+                        st.session_state["relive_report"] = relive_report
+                        if playlist:
+                            st.balloons()
+                            matched = int((relive_report["Status"] == "✅ Matched").sum())
+                            st.success(f"🎉 Created '{relive_name}' with {matched} of {len(relive_report)} songs!")
+                            st.markdown(f"### 👉 [Open it in Spotify]({playlist['external_urls']['spotify']})")
+                        else:
+                            st.error("Couldn't match any of these songs on Spotify. See the report below.")
+                except Exception as e:
+                    st.error(f"Failed to create playlist: {e}")
+
+        relive_rep = st.session_state.get("relive_report")
+        if relive_rep is not None and not relive_rep.empty:
+            ok = int((relive_rep["Status"] == "✅ Matched").sum())
+            with st.expander(f"📋 Track matching report ({ok}/{len(relive_rep)} matched)"):
+                st.dataframe(relive_rep, use_container_width=True, hide_index=True)
 
     st.divider()
 
