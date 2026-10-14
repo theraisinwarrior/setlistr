@@ -159,3 +159,22 @@ def fetch_artist_show_count(artist_mbid: str, api_key: str) -> int:
     if resp.status_code != 200:
         raise SetlistFmError(f"setlist.fm returned an error (HTTP {resp.status_code}).")
     return int(resp.json().get("total", 0))
+
+
+def fetch_year_show_count(artist_mbid: str, year: int, api_key: str) -> int:
+    """How many of an artist's concerts from one year are logged on setlist.fm (one API call)."""
+    url = f"{API_BASE}/search/setlists?artistMbid={artist_mbid}&year={int(year)}&p=1"
+    try:
+        resp = _get(url, api_key)
+    except requests.RequestException:
+        raise SetlistFmError("Couldn't reach setlist.fm.")
+    time.sleep(0.5)  # stay under setlist.fm's request-rate limit
+    if resp is None:
+        raise SetlistFmError("Couldn't reach setlist.fm.")
+    if resp.status_code == 404:
+        return 0
+    if resp.status_code == 429:
+        raise SetlistFmError("setlist.fm is rate-limiting requests.")
+    if resp.status_code != 200:
+        raise SetlistFmError(f"setlist.fm returned an error (HTTP {resp.status_code}).")
+    return int(resp.json().get("total", 0))
