@@ -5,10 +5,13 @@ import pandas as pd
 import spotipy
 import streamlit as st
 
+from analytics.heard_live import MODES, apply_heard_mode, heard_song_keys
 from analytics.setlist_stats import build_song_table, filter_shows
+from data.attendance import process_attendance
+from data.store import sync_attended_shows
 from services.auth import (get_active_token, get_authorize_url, get_setlist_api_key,
                            is_spotify_connected)
-from services.setlistfm import fetch_setlists, get_mbid_from_name
+from services.setlistfm import SetlistFmError, fetch_setlists, get_mbid_from_name
 from services.spotify_match import search_spotify_track
 
 st.title("🎵 Tour Setlist Playlist Generator")
@@ -193,6 +196,7 @@ if fetch_clicked or ytd_clicked:
                 else:
                     st.session_state["raw_setlists"] = fetched
                     st.session_state["artist_name"] = official_artist_name
+                    st.session_state["artist_mbid"] = artist_mbid
 
 # ------------------------------------------
 # Live recalculation & display
@@ -213,8 +217,38 @@ if st.session_state.get("raw_setlists"):
         else:
             st.warning(f"No matching full shows found for '{current_artist}' with the current filter settings.")
     else:
-        df = build_song_table(filtered_shows, hide_tape, hide_covers, min_freq,
-                              max_days_since_played, max_playlist_songs)
+        df_full = build_song_table(filtered_shows, hide_tape, hide_covers, min_freq,
+                                   max_days_since_played, 0)
+
+        with st.expander("🎧 Haven't heard it live yet", expanded=bool(st.session_state.get("heard_on"))):
+            heard_on = st.toggle("Check these songs against the concerts I've logged on setlist.fm",
+                                 key="heard_on")
+            heard_user = st.text_input("Your setlist.fm username", key="heard_user",
+                                       value=st.secrets.get("SETLISTFM_USERNAME", "raisinwarrior"))
+            heard_mode_label = st.radio("Playlist", list(MODES), key="heard_mode", horizontal=True)
+
+        heard_mode = "all"
+        if heard_on and heard_user.strip() and setlist_api_key:
+            try:
+                with st.spinner("Checking your concert history..."):
+                    raw_att = sync_attended_shows(heard_user.strip(), setlist_api_key)
+                att, _, _ = process_attendance(raw_att) if not raw_att.empty else (None, None, None)
+                heard, seen_n = heard_song_keys(att, current_artist, st.session_state.get("artist_mbid"))
+                heard_mode = MODES[heard_mode_label]
+                df = apply_heard_mode(df_full, heard, heard_mode, max_playlist_songs)
+                if seen_n:
+                    heard_here = int((df["Heard Live"] == "✅ Heard").sum()) if not df.empty else 0
+                    st.info(f"You've seen {current_artist} {seen_n} time{'s' if seen_n != 1 else ''} and heard "
+                            f"{len(heard)} different songs live. {heard_here} of the {len(df)} songs below "
+                            "are ones you've already heard.")
+                else:
+                    st.info(f"No {current_artist} concerts in {heard_user.strip()}'s setlist.fm history yet, "
+                            "so every song would be new to you.")
+            except SetlistFmError as e:
+                st.warning(f"Couldn't check your concert history: {e}")
+                df = df_full.head(int(max_playlist_songs)) if max_playlist_songs > 0 else df_full
+        else:
+            df = df_full.head(int(max_playlist_songs)) if max_playlist_songs > 0 else df_full
         st.session_state["df"] = df
 
         title_prefix = f"📅 {target_year} Most Played Songs" if is_ytd else "📊 Setlist Frequency Table"
@@ -266,6 +300,8 @@ if st.session_state.get("raw_setlists"):
                         if track_uris:
                             playlist_name = (f"{current_artist} {target_year} Tour Prep" if is_ytd
                                              else f"{current_artist} Tour Prep ({total_shows} Shows)")
+                            if heard_mode == "unheard_only":
+                                playlist_name += " · Not Heard Live Yet"
                             playlist = sp.current_user_playlist_create(name=playlist_name, public=True)
 
                             for i in range(0, len(track_uris), 100):

@@ -78,3 +78,65 @@ def test_compare_histories():
     assert list(res["only_me"]["Artist"]) == ["Only Mine", "Opener"] or set(res["only_me"]["Artist"]) == {"Only Mine", "Opener"}
     assert res["only_them"].iloc[0]["Artist"] == "Only Theirs" and res["only_them"].iloc[0]["Times Seen"] == 2
     assert "Beacon" in res["shared_venues"] and st["my_concerts"] == 4 and st["their_concerts"] == 4
+
+
+def test_relive_a_night_order_and_covers():
+    from analytics.nights import night_options, night_playlist_name, night_tracklist
+    rows = [
+        {"eventDate": "2024-05-01", "artist": "Headliner", "artist_mbid": "h", "venue": "Arena", "city": "NYC",
+         "state": "NY", "lat": 1, "long": 1, "song_count": 3, "tour": None, "url": "",
+         "songs": json.dumps(["Big Hit", "Cover Tune", "Big Hit"]),
+         "covers": json.dumps([{"song": "Cover Tune", "original": "Legends"}])},
+        {"eventDate": "2024-05-01", "artist": "Opener", "artist_mbid": "o", "venue": "Arena", "city": "NYC",
+         "state": "NY", "lat": 1, "long": 1, "song_count": 1, "tour": None, "url": "",
+         "songs": json.dumps(["Warm Up"]), "covers": "[]"},
+        {"eventDate": "2023-01-01", "artist": "No Setlist", "artist_mbid": "n", "venue": "Bar", "city": "NYC",
+         "state": "NY", "lat": 1, "long": 1, "song_count": 0, "tour": None, "url": "",
+         "songs": "[]", "covers": "[]"},
+    ]
+    df, _, _ = process_attendance(pd.DataFrame(rows))
+    opts = night_options(df)
+    assert len(opts) == 1 and opts[0]["headliner"] == "Headliner"
+    assert opts[0]["label"].startswith("May 01, 2024 · Headliner + Opener")
+    t = night_tracklist(df, opts[0]["day"], opts[0]["venue"])
+    assert list(t["Song"]) == ["Warm Up", "Big Hit", "Cover Tune"]          # opener first, repeat dropped
+    assert list(t["#"]) == [1, 2, 3] and t.iloc[2]["Original"] == "Legends"
+    assert list(night_tracklist(df, opts[0]["day"], "Arena", include_openers=False)["Artist"]) == ["Headliner"] * 2
+    assert night_playlist_name("Headliner", "Arena", opts[0]["day"]) == "Headliner · Arena · May 01, 2024"
+
+
+def test_heard_live_modes():
+    from analytics.heard_live import apply_heard_mode, heard_song_keys
+    df = _rows([("2024-01-01", "Club", [("The Band", "b", 2)])])
+    df.loc[:, "songs"] = json.dumps(["Old Favorite (Live)", "Another One"])
+    heard, shows = heard_song_keys(df, "the band")
+    assert shows == 1 and len(heard) == 2
+    table = pd.DataFrame({"Song Title": ["Old Favorite", "Brand New", "Another One!", "Deep Cut"],
+                          "Plays": [9, 8, 7, 6]})
+    first = apply_heard_mode(table, heard, "unheard_first")
+    assert list(first["Song Title"]) == ["Brand New", "Deep Cut", "Old Favorite", "Another One!"]
+    assert list(first["Heard Live"])[:2] == ["🆕 Not yet", "🆕 Not yet"]
+    only = apply_heard_mode(table, heard, "unheard_only", max_len=1)
+    assert list(only["Song Title"]) == ["Brand New"]
+    assert list(apply_heard_mode(table, heard, "all")["Song Title"]) == list(table["Song Title"])
+    assert heard_song_keys(df, "Someone Else") == (set(), 0)
+
+
+def test_wrapped_summary():
+    from analytics.wrapped import available_years, wrapped_summary
+    df = _rows([
+        ("2025-03-01", "MSG", [("Band A", "a", 10)]),
+        ("2025-06-01", "MSG", [("Band A", "a", 12), ("Opener", "o", 3)]),
+        ("2024-01-01", "Club", [("Band A", "a", 8)]),
+    ])
+    assert available_years(df) == [2025, 2024]
+    rare = pd.DataFrame([{"Song": "x", "Artist": "Band A", "Heard On": "06-01-2025", "Played In": "1 of 20 shows in 2025"}])
+    pop = pd.DataFrame([{"Artist": "Band A", "Shows Tracked": 900}, {"Artist": "Opener", "Shows Tracked": 1}])
+    w = wrapped_summary(df, 2025, rare, pop)
+    assert w["concerts"] == 2 and w["sets"] == 3 and w["artists"] == 2 and w["songs"] == 25
+    assert w["new_artists"] == 1 and w["prev_concerts"] == 1
+    assert w["top_artist"] == "Band A" and w["top_artist_count"] == 2 and w["top_venue"] == "MSG"
+    assert w["rarest_song"] == "x by Band A"
+    assert w["biggest_act"].startswith("Band A (900") and w["smallest_act"] == "Opener (1 show logged)"
+    assert wrapped_summary(df, 2030) == {}
+    assert wrapped_summary(df, None)["concerts"] == 3
