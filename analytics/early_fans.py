@@ -101,7 +101,7 @@ def early_fan_table(sightings: pd.DataFrame, show_counts=None, year_counts=None,
         if last_year and r.artist_mbid and r.eventDate_dt.year < last_year:
             then = year_counts.get((r.artist_mbid, r.eventDate_dt.year))
             now = year_counts.get((r.artist_mbid, last_year))
-            if then is not None and now is not None and then > 0:
+            if then is not None and now is not None and then > 0 and now > 0:
                 growth = now / then
         later = ""
         if pd.notna(r.headline_dt):
@@ -112,7 +112,8 @@ def early_fan_table(sightings: pd.DataFrame, show_counts=None, year_counts=None,
             "Venue": r.venue, "Later Headlined": later,
             "Shows Logged": int(logged) if logged is not None else None,
             "Shows That Year": then, "Shows Last Year": now,
-            "Growth": f"×{growth:.1f}" if growth is not None else "",
+            "Growth": (f"×{growth:.1f}" if growth is not None
+                       else "No shows last year" if (then and now == 0) else ""),
             "_g": growth if growth is not None else -1, "_h": 1 if later else 0,
             "_s": logged if logged is not None else -1, "_dt": r.eventDate_dt,
         })

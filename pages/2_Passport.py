@@ -479,7 +479,7 @@ try:
         else:
             early_table = early_fan_table(sightings, show_counts, None, this_year)
 
-        grown = early_table[early_table["Growth"].fillna("") != ""]
+        grown = early_table[early_table["Growth"].fillna("").astype(str).str.startswith("×")]
         if not grown.empty:
             best = grown.iloc[0]
             st.metric("Biggest glow-up", best["Artist"],
