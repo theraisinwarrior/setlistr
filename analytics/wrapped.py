@@ -66,6 +66,16 @@ def wrapped_summary(df_att: pd.DataFrame, year=None, rare_table=None, pop_table=
     counts = a.groupby("artist")["eventDate_dt"].nunique().sort_values(ascending=False)
     w["top_artist"], w["top_artist_count"] = counts.index[0], int(counts.iloc[0])
     w["top_artist_label"] = leader_label(counts, "artists")
+    top_n = int(counts.iloc[0])
+    tied = counts[counts == top_n]
+    if top_n > 1 and len(tied) > 1 and pop_table is not None and not pop_table.empty:
+        # Tie above 1x: the biggest act (most shows logged on setlist.fm) takes it
+        size = pop_table.set_index("Artist")["Shows Tracked"]
+        ranked = sorted(tied.index, key=lambda n: -int(size.get(n, -1)))
+        if int(size.get(ranked[0], -1)) >= 0:
+            w["top_artist"], w["top_artist_count"] = ranked[0], top_n
+            w["top_artist_label"] = f"{ranked[0]} · {top_n}×"
+            w["top_artist_tied"] = len(tied) - 1
     venues = c["venue"].value_counts()
     w["top_venue"], w["top_venue_count"] = venues.index[0], int(venues.iloc[0])
     w["top_venue_label"] = leader_label(venues, "venues")

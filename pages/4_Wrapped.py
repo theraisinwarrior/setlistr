@@ -64,11 +64,12 @@ def _table(state_key, snap_kind):
     """Rarest-song and popularity results are the owner's scans, so only use them for the owner."""
     if not is_owner:
         return None
+    need = "Times Played" if snap_kind == "rare_songs" else "Shows Tracked"
     res = st.session_state.get(state_key)
-    if res and not res["table"].empty:
+    if res and not res["table"].empty and need in res["table"].columns:
         return res["table"]
     snap = load_snapshot(snap_kind)
-    return snap["table"] if snap else None
+    return snap["table"] if snap and need in snap["table"].columns else None
 
 
 w = wrapped_summary(df_att, year, _table("rare_result", "rare_songs"), _table("pop_result", "artist_popularity"))

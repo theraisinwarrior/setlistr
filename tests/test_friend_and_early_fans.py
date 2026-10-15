@@ -3,7 +3,7 @@ import json
 import pandas as pd
 
 from analytics.compare import compare_histories
-from analytics.early_fans import early_fan_table, find_early_sightings, growth_plan
+from analytics.early_fans import early_fan_table, find_early_sightings, position_key, position_plan
 from data.attendance import process_attendance
 
 
@@ -35,25 +35,23 @@ def test_early_sightings_and_growth():
     assert pd.isna(s.loc["New Opener", "headline_dt"])
 
     sightings = find_early_sightings(df)
-    plan = growth_plan(sightings, this_year=2026)
-    assert ("Rising Star", "r1", 2018) in plan and ("Rising Star", "r1", 2025) in plan
-    assert not any(p[0] == "Too Recent" for p in plan)                              # no 'later' yet
+    plan = position_plan(sightings)
+    assert {p[0] for p in plan} == {"Rising Star", "New Opener", "Too Recent"}
 
-    counts = {("r1", 2018): 10, ("r1", 2025): 80, ("n1", 2021): 20, ("n1", 2025): 10}
-    t = early_fan_table(sightings, {"rising star": 500}, counts, this_year=2026)
-    assert list(t["Artist"])[:2] == ["Rising Star", "New Opener"]
-    top = t.iloc[0]
-    assert top["Growth"] == "×8.0" and top["Later Headlined"] == "Theater (Jul 2021)"
-    assert top["Shows Logged"] == 500 and top["Shows That Year"] == 10
+    positions = {position_key("r1", pd.Timestamp("2018-05-01")): {"before": 10, "since": 80},
+                 position_key("n1", pd.Timestamp("2021-07-01")): {"before": 0, "since": 12},
+                 position_key("z1", pd.Timestamp("2026-03-01")): {"before": 50, "since": 5}}
+    t = early_fan_table(sightings, positions)
+    assert list(t["Artist"]) == ["New Opener", "Rising Star", "Too Recent"]   # first-ever show ranks top
+    assert t.iloc[0]["Glow-up"] == "Their first logged show!"
+    top = t.set_index("Artist").loc["Rising Star"]
+    assert top["Glow-up"] == "×8.0" and top["Shows Before"] == 10 and top["Shows Since"] == 80
+    assert top["Later Headlined"] == "Theater (Jul 2021)"
 
     # Before growth is measured: later-headliners first, then most recent
-    t0 = early_fan_table(sightings, {}, None, this_year=2026)
+    t0 = early_fan_table(sightings)
     assert list(t0["Artist"]) == ["Rising Star", "Too Recent", "New Opener"]
-    assert t0["Growth"].tolist() == ["", "", ""]
-
-    # An act with no logged shows last year isn't shown as ×0.0
-    t2 = early_fan_table(sightings, {}, {("r1", 2018): 10, ("r1", 2025): 0}, this_year=2026)
-    assert t2.set_index("Artist").loc["Rising Star", "Growth"] == "No shows last year"
+    assert t0["Glow-up"].tolist() == ["", "", ""]
 
 
 def test_compare_histories():
@@ -155,3 +153,79 @@ def test_wrapped_ties_and_image():
     assert lines[0] == ("Top artist", "Band A & Band B tied at 1×")
     png = render_wrapped_png(w, "someone", lines)
     assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 10_000
+
+
+def _fake_history(dates_songs, per=20):
+    """Newest-first compact pages from [(date, [songs])]."""
+    shows = [{"date": d.strftime("%d-%m-%Y"), "songs": songs} for d, songs in dates_songs]
+    pages = [{"total": len(shows), "per_page": per, "shows": shows[i:i + per]} for i in range(0, len(shows), per)]
+    return pages or [{"total": 0, "per_page": per, "shows": []}]
+
+
+def test_show_position_before_and_since():
+    from datetime import date, timedelta
+    from analytics.career import show_position
+    today = date(2026, 10, 14)
+    # 3 announced future shows, then 92 played shows one day apart going back from Oct 13
+    hist = [(today + timedelta(days=30 - i), []) for i in range(3)]
+    hist += [(today - timedelta(days=1 + i), ["Song"]) for i in range(92)]
+    pages = _fake_history(hist)
+    calls = []
+    get = lambda p: (calls.append(p), pages[p - 1])[1]
+    seen = today - timedelta(days=41)                # the 41st played show back
+    pos = show_position(get, seen, today)
+    assert pos == {"before": 92 - 41, "since": 40, "total": 95}
+    assert len(set(calls)) <= 4                      # binary search, not a full scan
+    first = show_position(get, today - timedelta(days=92), today)
+    assert first["before"] == 0 and first["since"] == 91
+    assert show_position(lambda p: {"total": 0, "per_page": 20, "shows": []}, today, today) is None
+
+
+def test_career_rare_songs():
+    from datetime import date, timedelta
+    from analytics.career import career_plan, career_rare_songs, pages_needed, summarize_history
+    base = date(2025, 6, 1)
+    hist = [(base - timedelta(days=i), ["Hit", "Staple"] + (["Debut"] if i == 10 else [])) for i in range(30)]
+    pages = _fake_history(hist)
+    assert pages_needed(pages[0]) == 2 and pages_needed({"total": 5000, "per_page": 20}) == 10
+    h = summarize_history(pages)
+    assert h["n"] == 30 and h["complete"] and h["counts"]["debut"] == 1
+
+    seen_day = base - timedelta(days=10)
+    rows = [{"eventDate": seen_day.isoformat(), "artist": "Band", "artist_mbid": "b", "venue": "V",
+             "city": "C", "state": "NY", "lat": 1, "long": 1, "song_count": 3, "tour": None, "url": "",
+             "songs": json.dumps(["Debut", "Hit", "Staple"])},
+            {"eventDate": "2024-01-01", "artist": "Tiny", "artist_mbid": "t", "venue": "V", "city": "C",
+             "state": "NY", "lat": 1, "long": 1, "song_count": 1, "tour": None, "url": "",
+             "songs": json.dumps(["Only"])}]
+    df, _, _ = process_attendance(pd.DataFrame(rows))
+    assert {m for _, m in career_plan(df)} == {"b", "t"}
+    tiny = summarize_history(_fake_history([(date(2024, 1, 1), ["Only"])]))
+    table, stats = career_rare_songs(df, {"b": h, "t": tiny})
+    assert list(table["Song"]) == ["Debut", "Hit", "Staple"]
+    assert table.iloc[0]["Times Played"] == 1 and table.iloc[0]["Played In"] == "1 of all 30 logged shows"
+    assert stats["scored_shows"] == 1 and stats["skipped_small"] == 1      # Tiny has < 20 logged shows
+
+    # A show older than an incomplete window is skipped rather than looking falsely rare
+    partial = dict(h, complete=False, total=900)
+    old_row = dict(rows[0], eventDate="2020-01-01")
+    df_old, _, _ = process_attendance(pd.DataFrame([old_row]))
+    t2, s2 = career_rare_songs(df_old, {"b": partial})
+    assert t2.empty and s2["skipped_old"] == 1
+
+    # Your own show counts even when it's missing from the fetched pages (the old Lorde bug)
+    missing = summarize_history(_fake_history([(base - timedelta(days=i), ["Hit"]) for i in range(30) if i != 10]))
+    t3, _ = career_rare_songs(df, {"b": missing})
+    assert t3.set_index("Song").loc["Hit", "Times Played"] == 30          # 29 in pages + yours
+    assert t3.set_index("Song").loc["Debut", "Times Played"] == 1
+
+
+def test_wrapped_tiebreak_by_biggest_act():
+    from analytics.wrapped import wrapped_summary
+    df = _rows([("2025-01-01", "A1", [("Small Band", "s", 5)]), ("2025-02-01", "A2", [("Small Band", "s", 5)]),
+                ("2025-03-01", "B1", [("Huge Band", "h", 5)]), ("2025-04-01", "B2", [("Huge Band", "h", 5)]),
+                ("2025-05-01", "C1", [("Once", "o", 5)])])
+    pop = pd.DataFrame([{"Artist": "Huge Band", "Shows Tracked": 3000}, {"Artist": "Small Band", "Shows Tracked": 40}])
+    w = wrapped_summary(df, 2025, None, pop)
+    assert w["top_artist_label"] == "Huge Band · 2×" and w["top_artist_tied"] == 1
+    assert wrapped_summary(df, 2025)["top_artist_label"] == "Huge Band & Small Band tied at 2×"   # no size data

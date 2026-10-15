@@ -7,14 +7,15 @@ import spotipy
 import streamlit as st
 
 from data.attendance import apply_venue_overrides, extract_covers, process_attendance
-from analytics.deep_cuts import global_rare_songs, scan_plan, song_frequency
-from analytics.early_fans import early_fan_table, find_early_sightings, growth_plan
+from analytics.career import (career_plan, career_rare_songs, pages_needed, show_position,
+                              summarize_history)
+from analytics.early_fans import early_fan_table, find_early_sightings, position_key, position_plan
 from analytics.nights import night_options, night_playlist_name, night_tracklist
 from analytics.passport_stats import compute_highlights, venue_top_performers
 from analytics.popularity import artists_to_scan, rank_artists_by_popularity
 from data.snapshots import friendly_date, load_snapshot, snapshot_bytes
-from data.store import (clear_sync_cache, get_artist_show_count, get_artist_year_setlists,
-                        get_artist_year_show_count,
+from data.store import (clear_sync_cache, get_artist_show_count,
+                        get_artist_setlist_page,
                         load_csv_attendance, load_venue_overrides, sync_attended_shows)
 from services.auth import (get_active_token, get_authorize_url, get_setlist_api_key,
                            is_spotify_connected)
@@ -256,78 +257,87 @@ try:
 
         with s_col2:
             st.markdown("### 💎 Rarest Songs You've Heard")
-            st.caption("Every song you've heard live, ranked by how rarely that artist played it in the "
-                       "year you saw them (judged from up to 20 of their shows that year).")
+            st.caption("Every song you've heard live, ranked by how few times the artist has played it "
+                       "across their 200 most recent shows on setlist.fm (their whole history if they have "
+                       "fewer). Your own concerts are included in the count.")
 
-            scope = st.selectbox("Concerts to scan", ["Last 2 years", "Last 5 years", "All time"])
-            this_year = datetime.now().year
-            min_year = {"Last 2 years": this_year - 1, "Last 5 years": this_year - 4,
-                        "All time": None}[scope]
-            scope_att = df_att if min_year is None else df_att[df_att['year'] >= min_year]
-            plan = scan_plan(scope_att)
-
+            career = career_plan(df_att)
             rare_snap = load_snapshot("rare_songs")
+            if rare_snap and "Times Played" not in rare_snap["table"].columns:
+                rare_snap = None  # an older snapshot from the previous method
             if not api_key_for_sync:
                 if not rare_snap:
                     st.warning("Add a Setlist.fm API key to find rare songs.")
-            elif not plan:
+            elif not career:
                 if not rare_snap:
-                    st.info("Nothing to scan in that range. This needs the live setlist.fm sync.")
+                    st.info("This needs the live setlist.fm sync (the saved CSV has no artist IDs).")
             else:
-                st.caption(f"{len(plan)} artist-years to check, about "
-                           f"{max(1, round(len(plan) * 0.9 / 60))} min the first time. "
-                           "Results are remembered for a week, so repeat scans are fast.")
+                size_snap = load_snapshot("artist_popularity")
+                sizes = (dict(zip(size_snap["table"]["Artist"], size_snap["table"]["Shows Tracked"]))
+                         if size_snap else {})
+                est_calls = sum(pages_needed({"total": int(sizes.get(a_, 200)), "per_page": 20})
+                                for a_, _ in career)
+                st.caption(f"{len(career)} artists, about {est_calls:,} setlist.fm lookups "
+                           f"(~{max(1, round(est_calls * 0.7 / 60))} min the first time). Results are "
+                           "remembered for a week, so if it stops early, click again to continue.")
 
                 if st.button("🔍 Find my rarest songs", use_container_width=True):
-                    samples, hit_limit = {}, False
+                    histories, hit_limit = {}, False
                     progress = st.progress(0.0, text="Starting...")
-                    for i, (artist, mbid, year) in enumerate(plan):
-                        progress.progress(i / len(plan), text=f"Checking {artist} ({year}): {i + 1} of {len(plan)}")
+                    for i, (artist, mbid) in enumerate(career):
+                        progress.progress(i / len(career), text=f"Checking {artist}: {i + 1} of {len(career)}")
                         try:
-                            setlists = get_artist_year_setlists(mbid, year, api_key_for_sync)
+                            first_page = get_artist_setlist_page(mbid, 1, api_key_for_sync)
+                            artist_pages = [first_page] + [
+                                get_artist_setlist_page(mbid, pg, api_key_for_sync)
+                                for pg in range(2, pages_needed(first_page) + 1)]
                         except SetlistFmError:
                             hit_limit = True
                             break
-                        samples[(mbid, year)] = song_frequency(setlists)
+                        histories[mbid] = summarize_history(artist_pages)
                     progress.empty()
-                    table, stats = global_rare_songs(scope_att, samples)
-                    st.session_state["rare_result"] = {"table": table, "stats": stats,
-                                                       "hit_limit": hit_limit, "scope": scope}
+                    table, stats = career_rare_songs(df_att, histories)
+                    st.session_state["rare_result"] = {"table": table, "stats": stats, "hit_limit": hit_limit}
 
             res = st.session_state.get("rare_result")
+            if res is not None and "Times Played" not in res["table"].columns:
+                res = None
             if res is None and rare_snap and not rare_snap["table"].empty:
-                res = {"table": rare_snap["table"],
-                       "stats": rare_snap.get("stats") or {"scored_shows": 0, "skipped_shows": 0},
+                res = {"table": rare_snap["table"], "stats": rare_snap.get("stats") or {},
                        "hit_limit": False, "snapshot": rare_snap}
             if res:
                 table, stats = res["table"], res["stats"]
                 if res.get("snapshot"):
-                    snap = res["snapshot"]
-                    st.caption(f"📌 Saved results from {friendly_date(snap.get('created'))} "
-                               f"({snap.get('scope') or 'saved scan'}). Click **Find my rarest songs** "
-                               "to re-scan live.")
+                    st.caption(f"📌 Saved results from {friendly_date(res['snapshot'].get('created'))}. "
+                               "Click **Find my rarest songs** to re-scan live.")
                 if res["hit_limit"]:
-                    st.warning("setlist.fm's request limit was hit, so this list is partial. "
-                               "Click the button again in a bit; everything already checked is remembered.")
+                    st.warning("setlist.fm's request limit was hit, so this list is partial. Click the button "
+                               "again later; everything already checked is remembered for a week.")
                 if table.empty:
-                    st.info("No songs could be scored. setlist.fm may not have enough setlists for these artists.")
+                    st.info("No songs could be scored yet.")
                 else:
-                    max_pct = st.slider("Show songs played in at most this % of that year's shows",
-                                        5, 50, 15, step=5)
-                    shown = table[table['pct'] <= max_pct]
+                    max_played = st.slider("Show songs played at most this many times", 1, 50, 10)
+                    shown = table[table["Times Played"] <= max_played]
                     top = table.iloc[0]
-                    st.metric("Rarest song you've heard", top['Song'],
-                              f"{top['Artist']} ({top['Played In']})", delta_color="off")
-                    st.success(f"{len(shown)} rare songs found across {stats['scored_shows']} concerts.")
-                    st.dataframe(shown[['Song', 'Artist', 'Heard On', 'Played In', 'Frequency']].head(300),
+                    st.metric("Rarest song you've heard", top["Song"],
+                              f"{top['Artist']} · played in {top['Played In']}", delta_color="off")
+                    st.success(f"{len(shown)} songs played {max_played} times or fewer, across "
+                               f"{stats.get('scored_shows', 0)} concerts.")
+                    st.dataframe(shown[["Song", "Artist", "Heard On", "Played In"]].head(300),
                                  use_container_width=True, hide_index=True, height=300)
-                    if stats.get('skipped_shows'):
-                        st.caption(f"{stats['skipped_shows']} concert(s) were skipped: setlist.fm had "
-                                   "fewer than 8 setlists for that artist that year, or they couldn't be checked.")
+                    notes = []
+                    if stats.get("skipped_small"):
+                        notes.append(f"{stats['skipped_small']} by artists with fewer than 20 shows logged")
+                    if stats.get("skipped_old"):
+                        notes.append(f"{stats['skipped_old']} older than that artist's last 200 shows")
+                    if stats.get("unchecked"):
+                        notes.append(f"{stats['unchecked']} not checked yet")
+                    if notes:
+                        st.caption("Concerts left out: " + "; ".join(notes) + ".")
                     if not res.get("snapshot") and not res["hit_limit"]:
                         st.download_button(
                             "💾 Save as snapshot", file_name="rare_songs.json", mime="application/json",
-                            data=snapshot_bytes("rare_songs", table, stats=stats, scope=res.get("scope")),
+                            data=snapshot_bytes("rare_songs", table, stats=stats),
                             help="Put this file in the snapshots folder on GitHub so these results "
                                  "show instantly next time.")
 
@@ -437,11 +447,6 @@ try:
     if sightings.empty:
         st.info("No opening acts found yet.")
     else:
-        this_year = datetime.now().year
-        show_counts = {}
-        if pop is not None and not pop["table"].empty:
-            show_counts = dict(zip(pop["table"]["Artist"], pop["table"]["Shows Tracked"]))
-
         e1, e2 = st.columns(2)
         e1.metric("Openers you've caught", len(sightings))
         e2.metric("Later saw them headline", int(sightings["headline_dt"].notna().sum()))
@@ -449,58 +454,68 @@ try:
             st.markdown(f"- **{r.artist}** opened for {r.opened_for} ({r.eventDate_dt:%b %Y}) → you later "
                         f"saw them headline **{r.headline_venue}** ({r.headline_dt:%b %Y})")
 
-        g_plan = growth_plan(sightings, this_year)
+        p_plan = position_plan(sightings)
         early_snap = load_snapshot("early_fans")
-        if api_key_for_sync and g_plan:
-            st.caption(f"Measure how much each act has grown since you saw them: compares how many of their "
-                       f"concerts were logged on setlist.fm that year vs. last year. {len(g_plan)} lookups, about "
-                       f"{max(1, round(len(g_plan) * 0.9 / 60))} min the first time.")
+        if early_snap and "Shows Before" not in early_snap["table"].columns:
+            early_snap = None  # an older snapshot from the previous method
+        if api_key_for_sync and p_plan:
+            st.caption("Measure each act's glow-up: how many shows they'd logged on setlist.fm before the night "
+                       f"you saw them, and how many since. {len(p_plan)} acts, a few lookups each "
+                       f"(~{max(1, round(len(p_plan) * 4 * 0.7 / 60))} min the first time).")
             if st.button("📈 Measure their growth", use_container_width=True):
-                year_counts, early_hit = {}, False
+                positions, early_hit = {}, False
+                today = datetime.now().date()
                 early_progress = st.progress(0.0, text="Starting...")
-                for i, (artist, mbid, year) in enumerate(g_plan):
-                    early_progress.progress(i / len(g_plan),
-                                            text=f"Checking {artist} ({year}): {i + 1} of {len(g_plan)}")
+                for i, (artist, mbid, when) in enumerate(p_plan):
+                    early_progress.progress(i / len(p_plan), text=f"Checking {artist}: {i + 1} of {len(p_plan)}")
                     try:
-                        year_counts[(mbid, year)] = get_artist_year_show_count(mbid, year, api_key_for_sync)
+                        pos = show_position(lambda pg, m=mbid: get_artist_setlist_page(m, pg, api_key_for_sync),
+                                            when.date(), today)
                     except SetlistFmError:
                         early_hit = True
                         break
+                    if pos:
+                        positions[position_key(mbid, when)] = pos
                 early_progress.empty()
-                st.session_state["early_result"] = {"year_counts": year_counts, "hit_limit": early_hit}
+                st.session_state["early_result"] = {"positions": positions, "hit_limit": early_hit}
 
         early_res = st.session_state.get("early_result")
+        if early_res is not None and "positions" not in early_res:
+            early_res = None
         early_from_snap = False
         if early_res:
-            early_table = early_fan_table(sightings, show_counts, early_res["year_counts"], this_year)
+            early_table = early_fan_table(sightings, early_res["positions"])
             if early_res["hit_limit"]:
-                st.warning("setlist.fm's request limit was hit, so growth is only partly measured. Click the "
-                           "button again in a bit; everything already checked is remembered.")
+                st.warning("setlist.fm's request limit was hit, so this is only partly measured. Click the "
+                           "button again later; everything already checked is remembered.")
         elif early_snap and not early_snap["table"].empty:
             early_table, early_from_snap = early_snap["table"], True
             st.caption(f"📌 Saved results from {friendly_date(early_snap.get('created'))}. "
                        "Click **Measure their growth** to refresh live.")
         else:
-            early_table = early_fan_table(sightings, show_counts, None, this_year)
+            early_table = early_fan_table(sightings)
 
-        grown = early_table[early_table["Growth"].fillna("").astype(str).str.startswith("×")]
+        grown = early_table[early_table["Glow-up"].fillna("").astype(str) != ""]
         if not grown.empty:
             best = grown.iloc[0]
-            st.metric("Biggest glow-up", best["Artist"],
-                      f"{best['Growth']} as many shows a year since you saw them open for "
-                      f"{best['Opened For']} ({best['Date']})", delta_color="off")
+            since_n = int(best["Shows Since"])
+            if str(best["Glow-up"]).startswith("Their first"):
+                detail = (f"You were at their first logged show, opening for {best['Opened For']} "
+                          f"({best['Date']}). {since_n:,} shows since.")
+            else:
+                detail = (f"{int(best['Shows Before']):,} shows before you saw them open for {best['Opened For']} "
+                          f"({best['Date']}), {since_n:,} since ({best['Glow-up']})")
+            st.metric("Biggest glow-up", best["Artist"], detail, delta_color="off")
         st.dataframe(
             early_table, use_container_width=True, hide_index=True, height=350,
             column_config={
-                "Shows Logged": st.column_config.NumberColumn(
-                    "Shows Logged", format="%d", help="All their concerts logged on setlist.fm "
-                    "(from the Big Names & Hidden Gems scan)."),
-                "Shows That Year": st.column_config.NumberColumn(
-                    "Shows That Year", format="%d", help="Concerts logged the year you saw them open."),
-                "Shows Last Year": st.column_config.NumberColumn(
-                    "Shows Last Year", format="%d", help=f"Concerts logged in {this_year - 1}."),
-                "Growth": st.column_config.TextColumn(
-                    "Growth", help="Shows last year divided by shows the year you saw them."),
+                "Shows Before": st.column_config.NumberColumn(
+                    "Shows Before", format="%d", help="Their shows logged on setlist.fm before the night you saw them."),
+                "Shows Since": st.column_config.NumberColumn(
+                    "Shows Since", format="%d", help="Their shows logged since then (not counting announced "
+                    "future dates)."),
+                "Glow-up": st.column_config.TextColumn(
+                    "Glow-up", help="Shows since divided by shows before."),
             })
         if early_res and not early_res["hit_limit"] and not early_from_snap:
             st.download_button(
