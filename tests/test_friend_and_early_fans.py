@@ -39,7 +39,7 @@ def test_early_sightings_and_growth():
     assert {p[0] for p in plan} == {"Rising Star", "New Opener", "Too Recent"}
 
     positions = {position_key("r1", pd.Timestamp("2018-05-01")): {"before": 10, "since": 80},
-                 position_key("n1", pd.Timestamp("2021-07-01")): {"before": 0, "since": 12},
+                 position_key("n1", pd.Timestamp("2021-07-01")): {"before": 0, "since": 30},
                  position_key("z1", pd.Timestamp("2026-03-01")): {"before": 50, "since": 5}}
     t = early_fan_table(sightings, positions)
     assert list(t["Artist"]) == ["New Opener", "Rising Star", "Too Recent"]   # first-ever show ranks top
@@ -229,3 +229,33 @@ def test_wrapped_tiebreak_by_biggest_act():
     w = wrapped_summary(df, 2025, None, pop)
     assert w["top_artist_label"] == "Huge Band · 2×" and w["top_artist_tied"] == 1
     assert wrapped_summary(df, 2025)["top_artist_label"] == "Huge Band & Small Band tied at 2×"   # no size data
+
+
+def test_glowup_skips_tiny_acts_and_reranks_snapshots():
+    from analytics.early_fans import rank_early_table
+    snap = pd.DataFrame([
+        {"Artist": "Sophisticuffs", "Opened For": "Vampire Weekend", "Date": "Sep 15, 2025", "Venue": "W",
+         "Later Headlined": "", "Shows Before": 0, "Shows Since": 3, "Glow-up": "Their first logged show!"},
+        {"Artist": "Jalen Ngonda", "Opened For": "Lake Street Dive", "Date": "Nov 05, 2018", "Venue": "B",
+         "Later Headlined": "Rough Trade Below (Jun 2026)", "Shows Before": 20, "Shows Since": 180, "Glow-up": "x"},
+        {"Artist": "Unmeasured", "Opened For": "X", "Date": "Jan 01, 2020", "Venue": "V",
+         "Later Headlined": "", "Shows Before": None, "Shows Since": None, "Glow-up": ""},
+    ])
+    t = rank_early_table(snap)
+    assert list(t["Artist"]) == ["Jalen Ngonda", "Sophisticuffs", "Unmeasured"]
+    assert list(t["Glow-up"]) == ["×9.0", "Too few shows logged", ""]
+
+
+def test_drop_covers_from_rare_table():
+    from analytics.career import drop_covers
+    rows = [{"eventDate": "2025-09-15", "artist": "Vampire Weekend", "artist_mbid": "v", "venue": "W",
+             "city": "C", "state": "NJ", "lat": 1, "long": 1, "song_count": 2, "tour": None, "url": "",
+             "songs": json.dumps(["Harmony Hall", "Jokerman"]),
+             "covers": json.dumps([{"song": "Jokerman", "original": "Bob Dylan"}])}]
+    df, _, _ = process_attendance(pd.DataFrame(rows))
+    table = pd.DataFrame([{"Song": "Jokerman", "Artist": "Vampire Weekend", "Times Played": 1},
+                          {"Song": "Harmony Hall", "Artist": "Vampire Weekend", "Times Played": 50},
+                          {"Song": "Jokerman", "Artist": "Bob Dylan", "Times Played": 900}])
+    out = drop_covers(table, df)
+    assert list(zip(out["Song"], out["Artist"])) == [("Harmony Hall", "Vampire Weekend"), ("Jokerman", "Bob Dylan")]
+    assert len(drop_covers(table, df.drop(columns="covers"))) == 3     # no cover info: nothing dropped

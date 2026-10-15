@@ -73,13 +73,47 @@ def position_key(mbid, when) -> tuple:
     return (mbid, pd.Timestamp(when).strftime("%Y-%m-%d"))
 
 
+MIN_LOGGED = 20  # acts with fewer logged shows than this aren't ranked (tiny numbers swing wildly)
+
+
+def rank_early_table(df: pd.DataFrame, min_logged: int = MIN_LOGGED) -> pd.DataFrame:
+    """Recompute the Glow-up label and order from Shows Before / Shows Since.
+
+    Works on a fresh table or a saved snapshot. Glow-up = since / before. Being at their first
+    logged show ranks first; acts with fewer than `min_logged` shows aren't ranked.
+    Then: acts you later saw headline, then the most recent sightings.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame(columns=COLUMNS) if df is None else df
+    out = df.copy()
+    before = pd.to_numeric(out["Shows Before"], errors="coerce")
+    since = pd.to_numeric(out["Shows Since"], errors="coerce")
+    labels, scores = [], []
+    for b, s_ in zip(before, since):
+        if pd.isna(b) or pd.isna(s_):
+            labels.append(""); scores.append(-1.0)
+        elif b + s_ + 1 < min_logged:
+            labels.append("Too few shows logged"); scores.append(-0.5)
+        elif b == 0:
+            labels.append("Their first logged show!"); scores.append(float("inf"))
+        else:
+            labels.append(f"×{s_ / b:.1f}"); scores.append(s_ / b)
+    out["Glow-up"] = labels
+    out["_g"] = scores
+    out["_h"] = out["Later Headlined"].fillna("").astype(str).ne("").astype(int)
+    out["_dt"] = pd.to_datetime(out["Date"], format="%b %d, %Y", errors="coerce")
+    out = out.sort_values(["_g", "_h", "_dt"], ascending=[False, False, False])
+    out = out[COLUMNS].reset_index(drop=True)
+    for col in ("Shows Before", "Shows Since"):
+        out[col] = pd.array(pd.to_numeric(out[col], errors="coerce").tolist(), dtype="Int64")
+    return out
+
+
 def early_fan_table(sightings: pd.DataFrame, positions=None) -> pd.DataFrame:
-    """The display table, biggest glow-ups first.
+    """The display table, biggest glow-ups first (see rank_early_table for the rules).
 
     positions: position_key(mbid, date) -> {"before", "since"}: shows the artist had logged on
-    setlist.fm before the night you saw them, and since. Glow-up = since / before.
-    Ranking: biggest glow-up first (being at their first-ever logged show beats everything),
-    then acts you later saw headline, then the most recent sightings.
+    setlist.fm before the night you saw them, and since.
     """
     if sightings is None or sightings.empty:
         return pd.DataFrame(columns=COLUMNS)
@@ -87,22 +121,9 @@ def early_fan_table(sightings: pd.DataFrame, positions=None) -> pd.DataFrame:
     rows = []
     for r in sightings.itertuples():
         pos = positions.get(position_key(r.artist_mbid, r.eventDate_dt)) if r.artist_mbid else None
-        before = since = None
-        label, g = "", -1.0
-        if pos:
-            before, since = int(pos["before"]), int(pos["since"])
-            if before == 0:
-                label, g = "Their first logged show!", float("inf")
-            else:
-                g = since / before
-                label = f"×{g:.1f}"
         later = f"{r.headline_venue} ({r.headline_dt:%b %Y})" if pd.notna(r.headline_dt) else ""
         rows.append({"Artist": r.artist, "Opened For": r.opened_for, "Date": f"{r.eventDate_dt:%b %d, %Y}",
-                     "Venue": r.venue, "Later Headlined": later, "Shows Before": before,
-                     "Shows Since": since, "Glow-up": label,
-                     "_g": g, "_h": 1 if later else 0, "_dt": r.eventDate_dt})
-    df = pd.DataFrame(rows).sort_values(["_g", "_h", "_dt"], ascending=[False, False, False])
-    df = df[COLUMNS].reset_index(drop=True)
-    for col in ("Shows Before", "Shows Since"):
-        df[col] = pd.array(df[col].tolist(), dtype="Int64")
-    return df
+                     "Venue": r.venue, "Later Headlined": later,
+                     "Shows Before": int(pos["before"]) if pos else None,
+                     "Shows Since": int(pos["since"]) if pos else None, "Glow-up": ""})
+    return rank_early_table(pd.DataFrame(rows, columns=COLUMNS))
