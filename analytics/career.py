@@ -154,3 +154,60 @@ def show_position(get_page, when: date, today: date = None, max_future_pages: in
         if not ds_p or min(ds_p) <= today:
             break
     return {"before": max(total - after - on_day, 0), "since": max(after - future, 0), "total": total}
+
+
+def _norm(value) -> str:
+    return " ".join(str(value).lower().split()) if pd.notna(value) else ""
+
+
+def cover_keys(df_att: pd.DataFrame) -> set:
+    """(artist, song key) for every cover you heard live, from setlist.fm's cover info."""
+    keys = set()
+    if df_att is None or df_att.empty or "covers" not in df_att.columns:
+        return keys
+    for artist, raw in zip(df_att["artist"], df_att["covers"]):
+        try:
+            items = json.loads(raw) if pd.notna(raw) else []
+        except (TypeError, ValueError):
+            continue
+        for c in items:
+            if isinstance(c, dict) and c.get("song") and song_key(c["song"]):
+                keys.add((_norm(artist), song_key(c["song"])))
+    return keys
+
+
+def drop_covers(table: pd.DataFrame, df_att: pd.DataFrame) -> pd.DataFrame:
+    """Remove cover songs from a rarest-songs table (live result or saved snapshot)."""
+    if table is None or table.empty:
+        return table
+    covers = cover_keys(df_att)
+    if not covers:
+        return table
+    is_cover = [(_norm(a), song_key(s)) in covers for a, s in zip(table["Artist"], table["Song"])]
+    return table[[not c for c in is_cover]].reset_index(drop=True)
+
+
+def floor_by_times_heard(table: pd.DataFrame, df_att: pd.DataFrame) -> pd.DataFrame:
+    """A song can't have been played fewer times than you heard it, so raise counts that are lower.
+
+    That can happen when one of your concerts is older than the artist's checked window. Works on a
+    live result or a saved snapshot, and re-sorts rarest first.
+    """
+    if table is None or table.empty or df_att is None or df_att.empty or "songs" not in df_att.columns:
+        return table
+    heard = Counter()
+    d = df_att.dropna(subset=["eventDate_dt"]).drop_duplicates(subset=["eventDate_dt", "artist"])
+    for artist, raw in zip(d["artist"], d["songs"]):
+        heard.update({(_norm(artist), song_key(s)) for s in _songs(raw) if song_key(s)})
+    out = table.copy()
+    times = [max(int(t), heard.get((_norm(a), song_key(s)), 0))
+             for a, s, t in zip(out["Artist"], out["Song"], out["Times Played"])]
+    changed = [t != int(o) for t, o in zip(times, out["Times Played"])]
+    out["Times Played"] = times
+    out["Played In"] = [f"{t}{str(p)[len(str(p).split(' ')[0]):]}" if c else p
+                        for t, p, c in zip(times, out["Played In"], changed)]
+    if "n" in out.columns:
+        out["pct"] = [t / n * 100 if n else 100.0 for t, n in zip(times, out["n"])]
+        out["Frequency"] = [f"{v:.1f}%" for v in out["pct"]]
+        out = out.sort_values(["Times Played", "n"], ascending=[True, False], kind="stable")
+    return out.reset_index(drop=True)

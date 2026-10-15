@@ -4,6 +4,7 @@ from html import escape
 
 import streamlit as st
 
+from analytics.career import drop_covers, floor_by_times_heard
 from analytics.wrapped import available_years, highlight_lines, wrapped_summary
 from analytics.wrapped_image import render_wrapped_png
 from data.attendance import apply_venue_overrides, process_attendance
@@ -72,7 +73,10 @@ def _table(state_key, snap_kind):
     return snap["table"] if snap and need in snap["table"].columns else None
 
 
-w = wrapped_summary(df_att, year, _table("rare_result", "rare_songs"), _table("pop_result", "artist_popularity"))
+rare_table = _table("rare_result", "rare_songs")
+if rare_table is not None:
+    rare_table = drop_covers(floor_by_times_heard(rare_table, df_att), df_att)  # covers: one-off tributes
+w = wrapped_summary(df_att, year, rare_table, _table("pop_result", "artist_popularity"))
 if not w:
     st.info(f"No concerts in {pick}.")
     st.stop()

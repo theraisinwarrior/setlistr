@@ -7,9 +7,11 @@ import spotipy
 import streamlit as st
 
 from data.attendance import apply_venue_overrides, extract_covers, process_attendance
-from analytics.career import (career_plan, career_rare_songs, pages_needed, show_position,
-                              summarize_history)
-from analytics.early_fans import early_fan_table, find_early_sightings, position_key, position_plan
+from analytics.career import (career_plan, career_rare_songs, drop_covers, floor_by_times_heard,
+                              pages_needed,
+                              show_position, summarize_history)
+from analytics.early_fans import (early_fan_table, find_early_sightings, position_key, position_plan,
+                                  rank_early_table)
 from analytics.nights import night_options, night_playlist_name, night_tracklist
 from analytics.passport_stats import compute_highlights, venue_top_performers
 from analytics.popularity import artists_to_scan, rank_artists_by_popularity
@@ -307,9 +309,14 @@ try:
                        "hit_limit": False, "snapshot": rare_snap}
             if res:
                 table, stats = res["table"], res["stats"]
+                full_table = table  # what gets saved as a snapshot (covers are filtered when shown)
                 if res.get("snapshot"):
                     st.caption(f"📌 Saved results from {friendly_date(res['snapshot'].get('created'))}. "
                                "Click **Find my rarest songs** to re-scan live.")
+                table = floor_by_times_heard(table, df_att)
+                if not st.toggle("Include cover songs", value=False, key="rare_covers",
+                                 help="Covers are often one-off tributes, so they're hidden by default."):
+                    table = drop_covers(table, df_att)
                 if res["hit_limit"]:
                     st.warning("setlist.fm's request limit was hit, so this list is partial. Click the button "
                                "again later; everything already checked is remembered for a week.")
@@ -337,7 +344,7 @@ try:
                     if not res.get("snapshot") and not res["hit_limit"]:
                         st.download_button(
                             "💾 Save as snapshot", file_name="rare_songs.json", mime="application/json",
-                            data=snapshot_bytes("rare_songs", table, stats=stats),
+                            data=snapshot_bytes("rare_songs", full_table, stats=stats),
                             help="Put this file in the snapshots folder on GitHub so these results "
                                  "show instantly next time.")
 
@@ -489,13 +496,14 @@ try:
                 st.warning("setlist.fm's request limit was hit, so this is only partly measured. Click the "
                            "button again later; everything already checked is remembered.")
         elif early_snap and not early_snap["table"].empty:
-            early_table, early_from_snap = early_snap["table"], True
+            early_table, early_from_snap = rank_early_table(early_snap["table"]), True
             st.caption(f"📌 Saved results from {friendly_date(early_snap.get('created'))}. "
                        "Click **Measure their growth** to refresh live.")
         else:
             early_table = early_fan_table(sightings)
 
-        grown = early_table[early_table["Glow-up"].fillna("").astype(str) != ""]
+        glow_labels = early_table["Glow-up"].fillna("").astype(str)
+        grown = early_table[glow_labels.str.startswith("×") | glow_labels.str.startswith("Their first")]
         if not grown.empty:
             best = grown.iloc[0]
             since_n = int(best["Shows Since"])
@@ -515,7 +523,8 @@ try:
                     "Shows Since", format="%d", help="Their shows logged since then (not counting announced "
                     "future dates)."),
                 "Glow-up": st.column_config.TextColumn(
-                    "Glow-up", help="Shows since divided by shows before."),
+                    "Glow-up", help="Shows since divided by shows before. Acts with fewer than 20 shows "
+                    "logged aren't ranked."),
             })
         if early_res and not early_res["hit_limit"] and not early_from_snap:
             st.download_button(
