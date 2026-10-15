@@ -178,3 +178,39 @@ def fetch_year_show_count(artist_mbid: str, year: int, api_key: str) -> int:
     if resp.status_code != 200:
         raise SetlistFmError(f"setlist.fm returned an error (HTTP {resp.status_code}).")
     return int(resp.json().get("total", 0))
+
+
+def compact_setlist_page(data: dict) -> dict:
+    """Shrink one API page to what the rarity and glow-up math needs: dates and song names."""
+    shows = []
+    for sl in data.get("setlist", []) or []:
+        songs = []
+        for s in (sl.get("sets") or {}).get("set", []) or []:
+            for song in s.get("song", []) or []:
+                if song.get("name") and not song.get("tape", False):
+                    songs.append(song["name"])
+        shows.append({"date": sl.get("eventDate", ""), "songs": songs})
+    return {"total": int(data.get("total", 0) or 0),
+            "per_page": int(data.get("itemsPerPage", 20) or 20), "shows": shows}
+
+
+def fetch_artist_setlist_page(artist_mbid: str, page: int, api_key: str) -> dict:
+    """One page (20 setlists, newest first) of an artist's whole setlist.fm history, compacted.
+
+    Raises SetlistFmError on rate limits or errors, so failures are never cached.
+    """
+    url = f"{API_BASE}/artist/{artist_mbid}/setlists?p={int(page)}"
+    try:
+        resp = _get(url, api_key)
+    except requests.RequestException:
+        raise SetlistFmError("Couldn't reach setlist.fm.")
+    time.sleep(0.5)  # stay under setlist.fm's request-rate limit
+    if resp is None:
+        raise SetlistFmError("Couldn't reach setlist.fm.")
+    if resp.status_code == 404:
+        return {"total": 0, "per_page": 20, "shows": []}
+    if resp.status_code == 429:
+        raise SetlistFmError("setlist.fm is rate-limiting requests.")
+    if resp.status_code != 200:
+        raise SetlistFmError(f"setlist.fm returned an error (HTTP {resp.status_code}).")
+    return compact_setlist_page(resp.json())

@@ -3,8 +3,9 @@ import pandas as pd
 import streamlit as st
 
 from data.attendance import setlists_to_dataframe
-from services.setlistfm import (fetch_artist_show_count, fetch_attended_setlists,
-                                fetch_year_setlists, fetch_year_show_count)
+from services.setlistfm import (fetch_artist_setlist_page, fetch_artist_show_count,
+                                fetch_attended_setlists, fetch_year_setlists,
+                                fetch_year_show_count)
 
 ATTENDANCE_CSV = "attended_shows.csv"
 
@@ -34,6 +35,12 @@ def get_artist_show_count(mbid: str, api_key: str) -> int:
 def get_artist_year_show_count(mbid: str, year: int, api_key: str) -> int:
     """Number of an artist's concerts logged on setlist.fm for one year. Failures raise and aren't cached."""
     return fetch_year_show_count(mbid, int(year), api_key)
+
+
+@st.cache_data(ttl=7 * 86400, show_spinner=False, max_entries=6000)
+def get_artist_setlist_page(mbid: str, page: int, api_key: str) -> dict:
+    """One compact page of an artist's setlist history. Failures raise and aren't cached."""
+    return fetch_artist_setlist_page(mbid, int(page), api_key)
 
 
 def clear_sync_cache() -> None:

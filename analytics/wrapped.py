@@ -7,6 +7,23 @@ from data.attendance import process_attendance
 SKIP_ARTISTS = {"various artists"}
 
 
+def leader_label(counts: pd.Series, noun: str) -> str:
+    """'Name · 3×' for a clear leader; otherwise say it's a tie.
+
+    2-3 tied: 'A, B & C tied at 2×'. More than that: '43 artists tied at 1×'.
+    """
+    if counts is None or counts.empty:
+        return ""
+    top = int(counts.max())
+    tied = sorted(str(n) for n in counts[counts == top].index)
+    if len(tied) == 1:
+        return f"{tied[0]} · {top}×"
+    if len(tied) <= 3:
+        names = ", ".join(tied[:-1]) + f" & {tied[-1]}"
+        return f"{names} tied at {top}×"
+    return f"{len(tied)} {noun} tied at {top}×"
+
+
 def available_years(df_att: pd.DataFrame) -> list:
     years = df_att["eventDate_dt"].dropna().dt.year.astype(int).unique().tolist()
     return sorted(years, reverse=True)
@@ -48,8 +65,20 @@ def wrapped_summary(df_att: pd.DataFrame, year=None, rare_table=None, pop_table=
 
     counts = a.groupby("artist")["eventDate_dt"].nunique().sort_values(ascending=False)
     w["top_artist"], w["top_artist_count"] = counts.index[0], int(counts.iloc[0])
+    w["top_artist_label"] = leader_label(counts, "artists")
+    top_n = int(counts.iloc[0])
+    tied = counts[counts == top_n]
+    if top_n > 1 and len(tied) > 1 and pop_table is not None and not pop_table.empty:
+        # Tie above 1x: the biggest act (most shows logged on setlist.fm) takes it
+        size = pop_table.set_index("Artist")["Shows Tracked"]
+        ranked = sorted(tied.index, key=lambda n: -int(size.get(n, -1)))
+        if int(size.get(ranked[0], -1)) >= 0:
+            w["top_artist"], w["top_artist_count"] = ranked[0], top_n
+            w["top_artist_label"] = f"{ranked[0]} · {top_n}×"
+            w["top_artist_tied"] = len(tied) - 1
     venues = c["venue"].value_counts()
     w["top_venue"], w["top_venue_count"] = venues.index[0], int(venues.iloc[0])
+    w["top_venue_label"] = leader_label(venues, "venues")
     months = c["eventDate_dt"].dt.strftime("%B %Y" if year is None else "%B").value_counts()
     w["busiest_month"], w["busiest_month_count"] = months.index[0], int(months.iloc[0])
 
@@ -95,3 +124,17 @@ def wrapped_summary(df_att: pd.DataFrame, year=None, rare_table=None, pop_table=
                 return f"{row['Artist']} ({n:,} show{'' if n == 1 else 's'} logged)"
             w["biggest_act"], w["smallest_act"] = logged(p.iloc[0]), logged(p.iloc[-1])
     return w
+
+
+def highlight_lines(w: dict) -> list:
+    """[(label, value)] shown on the card and in the downloadable image, in order."""
+    out = [("Top artist", w["top_artist_label"]), ("Home venue", w["top_venue_label"])]
+    if "rarest_song" in w:
+        out.append(("Rarest song you heard", f"{w['rarest_song']} ({w['rarest_detail']})"))
+    if "top_song" in w:
+        out.append(("Most heard song", f"{w['top_song']} · {w['top_song_count']}×"))
+    if "biggest_act" in w:
+        out.append(("Biggest act", w["biggest_act"]))
+    if "farthest" in w:
+        out.append(("Farthest trip", w["farthest"]))
+    return out

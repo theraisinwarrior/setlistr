@@ -7,8 +7,8 @@ song count is tied (or zero) are skipped because the order can't be told.
 import pandas as pd
 
 SKIP_ARTISTS = {"various artists"}
-COLUMNS = ["Artist", "Opened For", "Date", "Venue", "Later Headlined", "Shows Logged",
-           "Shows That Year", "Shows Last Year", "Growth"]
+COLUMNS = ["Artist", "Opened For", "Date", "Venue", "Later Headlined", "Shows Before",
+           "Shows Since", "Glow-up"]
 
 
 def _key(name) -> str:
@@ -63,63 +63,46 @@ def find_early_sightings(df_att: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out, columns=cols)
 
 
-def growth_plan(sightings: pd.DataFrame, this_year: int) -> list:
-    """(artist, mbid, year) lookups needed: the year you saw them and last year.
-
-    Artists seen in the last two years are skipped since there's no 'later' to compare yet.
-    """
-    plan, seen = [], set()
-    last_year = this_year - 1
-    for r in sightings.itertuples():
-        if pd.isna(r.artist_mbid) or not r.artist_mbid or r.eventDate_dt.year >= last_year:
-            continue
-        for y in (r.eventDate_dt.year, last_year):
-            if (r.artist_mbid, y) not in seen:
-                seen.add((r.artist_mbid, y))
-                plan.append((r.artist, r.artist_mbid, y))
-    return plan
+def position_plan(sightings: pd.DataFrame) -> list:
+    """(artist, mbid, date) for each early sighting that can be looked up on setlist.fm."""
+    return [(r.artist, r.artist_mbid, r.eventDate_dt) for r in sightings.itertuples()
+            if isinstance(r.artist_mbid, str) and r.artist_mbid]
 
 
-def early_fan_table(sightings: pd.DataFrame, show_counts=None, year_counts=None,
-                    this_year=None) -> pd.DataFrame:
-    """The display table, best 'glow-ups' first.
+def position_key(mbid, when) -> tuple:
+    return (mbid, pd.Timestamp(when).strftime("%Y-%m-%d"))
 
-    show_counts: artist name -> total concerts logged on setlist.fm (from the popularity scan).
-    year_counts: (mbid, year) -> concerts logged that year (from the growth scan).
-    Ranking: biggest growth first when growth is known, then acts you later saw headline,
-    then the most recent sightings. (Today's size alone isn't used for ranking, since a
-    legend who opened for another legend wasn't 'before they were big'.)
+
+def early_fan_table(sightings: pd.DataFrame, positions=None) -> pd.DataFrame:
+    """The display table, biggest glow-ups first.
+
+    positions: position_key(mbid, date) -> {"before", "since"}: shows the artist had logged on
+    setlist.fm before the night you saw them, and since. Glow-up = since / before.
+    Ranking: biggest glow-up first (being at their first-ever logged show beats everything),
+    then acts you later saw headline, then the most recent sightings.
     """
     if sightings is None or sightings.empty:
         return pd.DataFrame(columns=COLUMNS)
-    show_counts = {_key(k): v for k, v in (show_counts or {}).items()}
-    year_counts = year_counts or {}
-    last_year = (this_year - 1) if this_year else None
+    positions = positions or {}
     rows = []
     for r in sightings.itertuples():
-        then = now = growth = None
-        if last_year and r.artist_mbid and r.eventDate_dt.year < last_year:
-            then = year_counts.get((r.artist_mbid, r.eventDate_dt.year))
-            now = year_counts.get((r.artist_mbid, last_year))
-            if then is not None and now is not None and then > 0 and now > 0:
-                growth = now / then
-        later = ""
-        if pd.notna(r.headline_dt):
-            later = f"{r.headline_venue} ({r.headline_dt:%b %Y})"
-        logged = show_counts.get(_key(r.artist))
-        rows.append({
-            "Artist": r.artist, "Opened For": r.opened_for, "Date": f"{r.eventDate_dt:%b %d, %Y}",
-            "Venue": r.venue, "Later Headlined": later,
-            "Shows Logged": int(logged) if logged is not None else None,
-            "Shows That Year": then, "Shows Last Year": now,
-            "Growth": (f"×{growth:.1f}" if growth is not None
-                       else "No shows last year" if (then and now == 0) else ""),
-            "_g": growth if growth is not None else -1, "_h": 1 if later else 0,
-            "_s": logged if logged is not None else -1, "_dt": r.eventDate_dt,
-        })
-    df = pd.DataFrame(rows)
-    df = df.sort_values(["_g", "_h", "_dt"], ascending=[False, False, False])
+        pos = positions.get(position_key(r.artist_mbid, r.eventDate_dt)) if r.artist_mbid else None
+        before = since = None
+        label, g = "", -1.0
+        if pos:
+            before, since = int(pos["before"]), int(pos["since"])
+            if before == 0:
+                label, g = "Their first logged show!", float("inf")
+            else:
+                g = since / before
+                label = f"×{g:.1f}"
+        later = f"{r.headline_venue} ({r.headline_dt:%b %Y})" if pd.notna(r.headline_dt) else ""
+        rows.append({"Artist": r.artist, "Opened For": r.opened_for, "Date": f"{r.eventDate_dt:%b %d, %Y}",
+                     "Venue": r.venue, "Later Headlined": later, "Shows Before": before,
+                     "Shows Since": since, "Glow-up": label,
+                     "_g": g, "_h": 1 if later else 0, "_dt": r.eventDate_dt})
+    df = pd.DataFrame(rows).sort_values(["_g", "_h", "_dt"], ascending=[False, False, False])
     df = df[COLUMNS].reset_index(drop=True)
-    for col in ("Shows Logged", "Shows That Year", "Shows Last Year"):
+    for col in ("Shows Before", "Shows Since"):
         df[col] = pd.array(df[col].tolist(), dtype="Int64")
     return df
