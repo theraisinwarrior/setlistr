@@ -185,3 +185,29 @@ def drop_covers(table: pd.DataFrame, df_att: pd.DataFrame) -> pd.DataFrame:
         return table
     is_cover = [(_norm(a), song_key(s)) in covers for a, s in zip(table["Artist"], table["Song"])]
     return table[[not c for c in is_cover]].reset_index(drop=True)
+
+
+def floor_by_times_heard(table: pd.DataFrame, df_att: pd.DataFrame) -> pd.DataFrame:
+    """A song can't have been played fewer times than you heard it, so raise counts that are lower.
+
+    That can happen when one of your concerts is older than the artist's checked window. Works on a
+    live result or a saved snapshot, and re-sorts rarest first.
+    """
+    if table is None or table.empty or df_att is None or df_att.empty or "songs" not in df_att.columns:
+        return table
+    heard = Counter()
+    d = df_att.dropna(subset=["eventDate_dt"]).drop_duplicates(subset=["eventDate_dt", "artist"])
+    for artist, raw in zip(d["artist"], d["songs"]):
+        heard.update({(_norm(artist), song_key(s)) for s in _songs(raw) if song_key(s)})
+    out = table.copy()
+    times = [max(int(t), heard.get((_norm(a), song_key(s)), 0))
+             for a, s, t in zip(out["Artist"], out["Song"], out["Times Played"])]
+    changed = [t != int(o) for t, o in zip(times, out["Times Played"])]
+    out["Times Played"] = times
+    out["Played In"] = [f"{t}{str(p)[len(str(p).split(' ')[0]):]}" if c else p
+                        for t, p, c in zip(times, out["Played In"], changed)]
+    if "n" in out.columns:
+        out["pct"] = [t / n * 100 if n else 100.0 for t, n in zip(times, out["n"])]
+        out["Frequency"] = [f"{v:.1f}%" for v in out["pct"]]
+        out = out.sort_values(["Times Played", "n"], ascending=[True, False], kind="stable")
+    return out.reset_index(drop=True)

@@ -259,3 +259,17 @@ def test_drop_covers_from_rare_table():
     out = drop_covers(table, df)
     assert list(zip(out["Song"], out["Artist"])) == [("Harmony Hall", "Vampire Weekend"), ("Jokerman", "Bob Dylan")]
     assert len(drop_covers(table, df.drop(columns="covers"))) == 3     # no cover info: nothing dropped
+
+
+def test_floor_by_times_heard():
+    from analytics.career import floor_by_times_heard
+    df = _rows([("2025-10-01", "MSG", [("Lorde", "l", 3)]), ("2025-12-17", "Barclays", [("Lorde", "l", 3)])])
+    df.loc[:, "songs"] = json.dumps(["Crazy", "Other"])
+    table = pd.DataFrame([
+        {"Song": "Crazy", "Artist": "Lorde", "Times Played": 1, "Played In": "1 of their last 200 shows", "n": 200},
+        {"Song": "Deep", "Artist": "Lorde", "Times Played": 1, "Played In": "1 of their last 200 shows", "n": 200},
+        {"Song": "Other", "Artist": "Lorde", "Times Played": 50, "Played In": "50 of their last 200 shows", "n": 200}])
+    out = floor_by_times_heard(table, df).set_index("Song")
+    assert out.loc["Crazy", "Times Played"] == 2 and out.loc["Crazy", "Played In"] == "2 of their last 200 shows"
+    assert out.loc["Deep", "Times Played"] == 1 and out.loc["Other", "Times Played"] == 50
+    assert list(floor_by_times_heard(table, df)["Song"]) == ["Deep", "Crazy", "Other"]

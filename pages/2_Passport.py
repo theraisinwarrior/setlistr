@@ -7,7 +7,8 @@ import spotipy
 import streamlit as st
 
 from data.attendance import apply_venue_overrides, extract_covers, process_attendance
-from analytics.career import (career_plan, career_rare_songs, drop_covers, pages_needed,
+from analytics.career import (career_plan, career_rare_songs, drop_covers, floor_by_times_heard,
+                              pages_needed,
                               show_position, summarize_history)
 from analytics.early_fans import (early_fan_table, find_early_sightings, position_key, position_plan,
                                   rank_early_table)
@@ -312,6 +313,7 @@ try:
                 if res.get("snapshot"):
                     st.caption(f"📌 Saved results from {friendly_date(res['snapshot'].get('created'))}. "
                                "Click **Find my rarest songs** to re-scan live.")
+                table = floor_by_times_heard(table, df_att)
                 if not st.toggle("Include cover songs", value=False, key="rare_covers",
                                  help="Covers are often one-off tributes, so they're hidden by default."):
                     table = drop_covers(table, df_att)
