@@ -140,3 +140,18 @@ def test_wrapped_summary():
     assert w["biggest_act"].startswith("Band A (900") and w["smallest_act"] == "Opener (1 show logged)"
     assert wrapped_summary(df, 2030) == {}
     assert wrapped_summary(df, None)["concerts"] == 3
+
+
+def test_wrapped_ties_and_image():
+    from analytics.wrapped import highlight_lines, leader_label, wrapped_summary
+    from analytics.wrapped_image import render_wrapped_png
+    assert leader_label(pd.Series({"A": 3, "B": 1}), "artists") == "A · 3×"
+    assert leader_label(pd.Series({"B": 2, "A": 2, "C": 1}), "artists") == "A & B tied at 2×"
+    assert leader_label(pd.Series({"C": 1, "A": 1, "B": 1}), "artists") == "A, B & C tied at 1×"
+    assert leader_label(pd.Series({n: 1 for n in "ABCDE"}), "artists") == "5 artists tied at 1×"
+    df = _rows([("2025-03-01", "MSG", [("Band A", "a", 10)]), ("2025-06-01", "Club", [("Band B", "b", 9)])])
+    w = wrapped_summary(df, 2025)
+    lines = highlight_lines(w)
+    assert lines[0] == ("Top artist", "Band A & Band B tied at 1×")
+    png = render_wrapped_png(w, "someone", lines)
+    assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 10_000
