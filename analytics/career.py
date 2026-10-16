@@ -14,6 +14,7 @@ from analytics.deep_cuts import song_key
 
 CAREER_PAGES = 10  # 10 pages x 20 setlists = each artist's 200 most recent shows
 MIN_LOGGED = 20    # artists with fewer logged shows than this are skipped (every song would look rare)
+MIN_SET_SONGS = 3  # setlists with fewer songs (snippets, partial logs) are ignored everywhere
 RARE_COLUMNS = ["Song", "Artist", "Heard On", "Venue", "Played In", "Times Played", "Shows Checked",
                 "Frequency", "pct", "n"]
 
@@ -48,15 +49,18 @@ def pages_needed(first_page: dict, cap: int = CAREER_PAGES) -> int:
     return max(1, min(cap, math.ceil(total / per))) if total else 1
 
 
-def summarize_history(pages: list) -> dict:
-    """Song counts over the fetched pages (shows without a setlist, e.g. future dates, are ignored)."""
+def summarize_history(pages: list, min_songs: int = MIN_SET_SONGS) -> dict:
+    """Song counts over the fetched pages.
+
+    Setlists with fewer than `min_songs` songs (future dates, snippets, partial logs) are ignored.
+    """
     total = pages[0]["total"] if pages else 0
     per = pages[0].get("per_page", 20) if pages else 20
     counts, dates, n = Counter(), set(), 0
     for p in pages:
         for show in p["shows"]:
             keys = {song_key(s) for s in show["songs"] if song_key(s)}
-            if not keys:
+            if len(keys) < min_songs:
                 continue
             n += 1
             counts.update(keys)
@@ -66,7 +70,8 @@ def summarize_history(pages: list) -> dict:
             "complete": len(pages) * per >= total, "oldest": min(parsed) if parsed else None}
 
 
-def career_rare_songs(df_att: pd.DataFrame, histories: dict, min_logged: int = MIN_LOGGED):
+def career_rare_songs(df_att: pd.DataFrame, histories: dict, min_logged: int = MIN_LOGGED,
+                      min_songs: int = MIN_SET_SONGS):
     """Every song you heard live, ranked by how few times the artist played it in the shows checked.
 
     histories: mbid -> summarize_history() result. Your own concerts count (they're in the
@@ -74,11 +79,14 @@ def career_rare_songs(df_att: pd.DataFrame, histories: dict, min_logged: int = M
     later dropped would look rare only because they moved on.
     Returns (DataFrame rarest first, stats dict).
     """
-    best, scored, skipped_small, skipped_old, unchecked = {}, 0, 0, 0, 0
+    best, scored, skipped_small, skipped_old, unchecked, skipped_short = {}, 0, 0, 0, 0, 0
     d = df_att.dropna(subset=["eventDate_dt"])
     for r in d.itertuples():
         songs = _songs(getattr(r, "songs", None))
         if not songs:
+            continue
+        if len({song_key(x) for x in songs if song_key(x)}) < min_songs:
+            skipped_short += 1
             continue
         h = histories.get(getattr(r, "artist_mbid", None))
         if not h:
@@ -113,7 +121,8 @@ def career_rare_songs(df_att: pd.DataFrame, histories: dict, min_logged: int = M
                 best[key] = cand
     df = pd.DataFrame(list(best.values()), columns=RARE_COLUMNS + ["_dt"])
     df = df.sort_values(["Times Played", "n", "_dt"], ascending=[True, False, False]).reset_index(drop=True)
-    stats = {"scored_shows": scored, "skipped_shows": skipped_small + skipped_old + unchecked,
+    stats = {"scored_shows": scored, "skipped_short": skipped_short,
+             "skipped_shows": skipped_small + skipped_old + unchecked + skipped_short,
              "skipped_small": skipped_small, "skipped_old": skipped_old, "unchecked": unchecked}
     return df.drop(columns=["_dt"]), stats
 
@@ -198,7 +207,9 @@ def floor_by_times_heard(table: pd.DataFrame, df_att: pd.DataFrame) -> pd.DataFr
     heard = Counter()
     d = df_att.dropna(subset=["eventDate_dt"]).drop_duplicates(subset=["eventDate_dt", "artist"])
     for artist, raw in zip(d["artist"], d["songs"]):
-        heard.update({(_norm(artist), song_key(s)) for s in _songs(raw) if song_key(s)})
+        keys = {song_key(s) for s in _songs(raw) if song_key(s)}
+        if len(keys) >= MIN_SET_SONGS:
+            heard.update({(_norm(artist), k) for k in keys})
     out = table.copy()
     times = [max(int(t), heard.get((_norm(a), song_key(s)), 0))
              for a, s, t in zip(out["Artist"], out["Song"], out["Times Played"])]

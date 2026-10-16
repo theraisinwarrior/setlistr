@@ -8,6 +8,7 @@ import streamlit as st
 from analytics.heard_live import MODES, apply_heard_mode, heard_song_keys
 from analytics.setlist_stats import build_song_table, filter_shows
 from data.attendance import process_attendance
+from data.display import dated_table
 from data.store import sync_attended_shows
 from services.auth import (get_active_token, get_authorize_url, get_setlist_api_key,
                            is_spotify_connected)
@@ -254,7 +255,7 @@ if st.session_state.get("raw_setlists"):
         title_prefix = f"📅 {target_year} Most Played Songs" if is_ytd else "📊 Setlist Frequency Table"
         st.subheader(f"{title_prefix} — {current_artist} ({total_shows} Shows Analyzed)")
 
-        st.dataframe(
+        dated_table(
             df,
             column_config={
                 "Setlist.fm Link": st.column_config.LinkColumn(

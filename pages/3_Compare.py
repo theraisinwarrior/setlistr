@@ -3,6 +3,7 @@ import streamlit as st
 
 from analytics.compare import compare_histories
 from data.attendance import process_attendance
+from data.display import dated_table
 from data.store import sync_attended_shows
 from services.auth import get_setlist_api_key
 from services.setlistfm import SetlistFmError
@@ -74,22 +75,22 @@ if res["same_shows"].empty:
 else:
     st.success(f"You and {friend} were at {s['same_shows']} of the same concert"
                f"{'s' if s['same_shows'] != 1 else ''}!")
-    st.dataframe(res["same_shows"], use_container_width=True, hide_index=True)
+    dated_table(res["same_shows"], use_container_width=True, hide_index=True)
 
 st.subheader("🎤 Artists you've both seen")
 if res["shared_artists"].empty:
     st.caption("No artists in common yet.")
 else:
-    st.dataframe(res["shared_artists"].rename(columns={"Them": friend}), use_container_width=True,
+    dated_table(res["shared_artists"].rename(columns={"Them": friend}), use_container_width=True,
                  hide_index=True, height=min(400, 38 + 35 * len(res["shared_artists"])))
 
 o1, o2 = st.columns(2)
 with o1:
     st.markdown(f"**Only you've seen** (your picks for {friend})")
-    st.dataframe(res["only_me"], use_container_width=True, hide_index=True)
+    dated_table(res["only_me"], use_container_width=True, hide_index=True)
 with o2:
     st.markdown(f"**Only {friend} has seen** (their picks for you)")
-    st.dataframe(res["only_them"], use_container_width=True, hide_index=True)
+    dated_table(res["only_them"], use_container_width=True, hide_index=True)
 
 if res["shared_venues"]:
     with st.expander(f"🏟️ {len(res['shared_venues'])} venues you've both been to"):
