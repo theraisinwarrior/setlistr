@@ -7,6 +7,7 @@ import spotipy
 import streamlit as st
 
 from data.attendance import apply_venue_overrides, extract_covers, process_attendance
+from data.display import dated_table
 from analytics.career import (career_plan, career_rare_songs, drop_covers, floor_by_times_heard,
                               pages_needed,
                               show_position, summarize_history)
@@ -330,13 +331,15 @@ try:
                               f"{top['Artist']} · played in {top['Played In']}", delta_color="off")
                     st.success(f"{len(shown)} songs played {max_played} times or fewer, across "
                                f"{stats.get('scored_shows', 0)} concerts.")
-                    st.dataframe(shown[["Song", "Artist", "Heard On", "Played In"]].head(300),
+                    dated_table(shown[["Song", "Artist", "Heard On", "Played In"]].head(300),
                                  use_container_width=True, hide_index=True, height=300)
                     notes = []
                     if stats.get("skipped_small"):
                         notes.append(f"{stats['skipped_small']} by artists with fewer than 20 shows logged")
                     if stats.get("skipped_old"):
                         notes.append(f"{stats['skipped_old']} older than that artist's last 200 shows")
+                    if stats.get("skipped_short"):
+                        notes.append(f"{stats['skipped_short']} with fewer than 3 songs logged")
                     if stats.get("unchecked"):
                         notes.append(f"{stats['unchecked']} not checked yet")
                     if notes:
@@ -366,7 +369,7 @@ try:
         top_coverer = df_covers['Performed By'].value_counts()
         cv4.metric("Covers The Most", top_coverer.index[0], f"{top_coverer.iloc[0]} covers",
                    delta_color="off")
-        st.dataframe(df_covers.drop(columns='eventDate_dt'), use_container_width=True,
+        dated_table(df_covers.drop(columns='eventDate_dt'), use_container_width=True,
                      hide_index=True, height=300)
 
     st.divider()
@@ -431,12 +434,12 @@ try:
             pop_cfg = {"Shows Tracked": st.column_config.NumberColumn("Shows Logged", format="%d")}
             with pc1:
                 st.markdown("**Biggest acts**")
-                st.dataframe(pop_table.head(k), column_config=pop_cfg, use_container_width=True,
+                dated_table(pop_table.head(k), column_config=pop_cfg, use_container_width=True,
                              hide_index=True)
             with pc2:
                 st.markdown("**Hidden gems**")
                 gems = pop_table.tail(k).sort_values(["Shows Tracked", "Artist"])
-                st.dataframe(gems, column_config=pop_cfg, use_container_width=True, hide_index=True)
+                dated_table(gems, column_config=pop_cfg, use_container_width=True, hide_index=True)
             if not pop.get("snapshot") and not pop["hit_limit"]:
                 st.download_button(
                     "💾 Save as snapshot", file_name="artist_popularity.json", mime="application/json",
@@ -514,7 +517,7 @@ try:
                 detail = (f"{int(best['Shows Before']):,} shows before you saw them open for {best['Opened For']} "
                           f"({best['Date']}), {since_n:,} since ({best['Glow-up']})")
             st.metric("Biggest glow-up", best["Artist"], detail, delta_color="off")
-        st.dataframe(
+        dated_table(
             early_table, use_container_width=True, hide_index=True, height=350,
             column_config={
                 "Shows Before": st.column_config.NumberColumn(
@@ -594,7 +597,7 @@ try:
 
     display_cols = ['Date', 'artist', 'venue', 'city', 'state', 'tour', 'song_count']
     column_configs = {
-        "Date": st.column_config.TextColumn("Date"),
+        "Date": "Date",
         "artist": st.column_config.TextColumn("Performer"),
         "venue": st.column_config.TextColumn("Venue"),
         "city": st.column_config.TextColumn("City"),
@@ -606,7 +609,7 @@ try:
         display_cols.append('url')
         column_configs["url"] = st.column_config.LinkColumn("Setlist Link", display_text="View Setlist 🔗")
 
-    st.dataframe(df_att_sorted[display_cols], column_config=column_configs,
+    dated_table(df_att_sorted[display_cols], column_config=column_configs,
                  use_container_width=True, hide_index=True)
 
     st.divider()
@@ -627,7 +630,7 @@ try:
         v_col3.metric("Most Seen Artist Here",
                       df_att[df_att['venue'] == selected_venue]['artist'].mode()[0] if not v_shows.empty else "N/A")
 
-        st.dataframe(
+        dated_table(
             v_shows[['Date', 'artist', 'tour', 'song_count']],
             column_config={"Date": "Date", "artist": "Artist(s) Performed",
                            "tour": "Tour", "song_count": "Total Songs"},

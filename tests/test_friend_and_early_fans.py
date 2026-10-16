@@ -185,7 +185,8 @@ def test_career_rare_songs():
     from datetime import date, timedelta
     from analytics.career import career_plan, career_rare_songs, pages_needed, summarize_history
     base = date(2025, 6, 1)
-    hist = [(base - timedelta(days=i), ["Hit", "Staple"] + (["Debut"] if i == 10 else [])) for i in range(30)]
+    hist = [(base - timedelta(days=i), ["Hit", "Staple", "Opener"] + (["Debut"] if i == 10 else []))
+            for i in range(30)]
     pages = _fake_history(hist)
     assert pages_needed(pages[0]) == 2 and pages_needed({"total": 5000, "per_page": 20}) == 10
     h = summarize_history(pages)
@@ -194,15 +195,15 @@ def test_career_rare_songs():
     seen_day = base - timedelta(days=10)
     rows = [{"eventDate": seen_day.isoformat(), "artist": "Band", "artist_mbid": "b", "venue": "V",
              "city": "C", "state": "NY", "lat": 1, "long": 1, "song_count": 3, "tour": None, "url": "",
-             "songs": json.dumps(["Debut", "Hit", "Staple"])},
+             "songs": json.dumps(["Debut", "Hit", "Staple", "Opener"])},
             {"eventDate": "2024-01-01", "artist": "Tiny", "artist_mbid": "t", "venue": "V", "city": "C",
              "state": "NY", "lat": 1, "long": 1, "song_count": 1, "tour": None, "url": "",
-             "songs": json.dumps(["Only"])}]
+             "songs": json.dumps(["Only", "Two", "Three"])}]
     df, _, _ = process_attendance(pd.DataFrame(rows))
     assert {m for _, m in career_plan(df)} == {"b", "t"}
-    tiny = summarize_history(_fake_history([(date(2024, 1, 1), ["Only"])]))
+    tiny = summarize_history(_fake_history([(date(2024, 1, 1), ["Only", "Two", "Three"])]))
     table, stats = career_rare_songs(df, {"b": h, "t": tiny})
-    assert list(table["Song"]) == ["Debut", "Hit", "Staple"]
+    assert list(table["Song"]) == ["Debut", "Hit", "Staple", "Opener"]
     assert table.iloc[0]["Times Played"] == 1 and table.iloc[0]["Played In"] == "1 of all 30 logged shows"
     assert stats["scored_shows"] == 1 and stats["skipped_small"] == 1      # Tiny has < 20 logged shows
 
@@ -214,7 +215,8 @@ def test_career_rare_songs():
     assert t2.empty and s2["skipped_old"] == 1
 
     # Your own show counts even when it's missing from the fetched pages (the old Lorde bug)
-    missing = summarize_history(_fake_history([(base - timedelta(days=i), ["Hit"]) for i in range(30) if i != 10]))
+    missing = summarize_history(_fake_history([(base - timedelta(days=i), ["Hit", "Staple", "Opener"])
+                                               for i in range(30) if i != 10]))
     t3, _ = career_rare_songs(df, {"b": missing})
     assert t3.set_index("Song").loc["Hit", "Times Played"] == 30          # 29 in pages + yours
     assert t3.set_index("Song").loc["Debut", "Times Played"] == 1
@@ -264,7 +266,7 @@ def test_drop_covers_from_rare_table():
 def test_floor_by_times_heard():
     from analytics.career import floor_by_times_heard
     df = _rows([("2025-10-01", "MSG", [("Lorde", "l", 3)]), ("2025-12-17", "Barclays", [("Lorde", "l", 3)])])
-    df.loc[:, "songs"] = json.dumps(["Crazy", "Other"])
+    df.loc[:, "songs"] = json.dumps(["Crazy", "Other", "Third"])
     table = pd.DataFrame([
         {"Song": "Crazy", "Artist": "Lorde", "Times Played": 1, "Played In": "1 of their last 200 shows", "n": 200},
         {"Song": "Deep", "Artist": "Lorde", "Times Played": 1, "Played In": "1 of their last 200 shows", "n": 200},
@@ -273,3 +275,42 @@ def test_floor_by_times_heard():
     assert out.loc["Crazy", "Times Played"] == 2 and out.loc["Crazy", "Played In"] == "2 of their last 200 shows"
     assert out.loc["Deep", "Times Played"] == 1 and out.loc["Other", "Times Played"] == 50
     assert list(floor_by_times_heard(table, df)["Song"]) == ["Deep", "Crazy", "Other"]
+
+
+def test_short_setlists_are_ignored():
+    from datetime import date, timedelta
+    from analytics.career import career_rare_songs, floor_by_times_heard, summarize_history
+    base = date(2025, 6, 1)
+    full = [(base - timedelta(days=i), ["A", "B", "C"]) for i in range(25)]
+    snippets = [(base - timedelta(days=100 + i), ["A"]) for i in range(5)]   # 1-song festival snippets
+    h = summarize_history(_fake_history(full + snippets))
+    assert h["n"] == 25 and h["counts"]["a"] == 25                         # snippets not counted
+    rows = [{"eventDate": "2025-06-01", "artist": "Band", "artist_mbid": "b", "venue": "V", "city": "C",
+             "state": "NY", "lat": 1, "long": 1, "song_count": 3, "tour": None, "url": "",
+             "songs": json.dumps(["A", "B", "C"])},
+            {"eventDate": "2025-05-30", "artist": "Band", "artist_mbid": "b", "venue": "Fest", "city": "C",
+             "state": "NY", "lat": 1, "long": 1, "song_count": 2, "tour": None, "url": "",
+             "songs": json.dumps(["A", "Snippet"])}]
+    df, _, _ = process_attendance(pd.DataFrame(rows))
+    table, stats = career_rare_songs(df, {"b": h})
+    assert "Snippet" not in set(table["Song"]) and stats["skipped_short"] == 1 and stats["scored_shows"] == 1
+    floored = floor_by_times_heard(pd.DataFrame([{"Song": "Snippet", "Artist": "Band", "Times Played": 0,
+                                                  "Played In": "0 of x", "n": 25}]), df)
+    assert floored.iloc[0]["Times Played"] == 0                                   # 2-song show ignored
+
+
+def test_sortable_dates():
+    from data.display import sortable_dates
+    df = pd.DataFrame({"Date": ["Apr 09, 2026", "Aug 05, 2017", "Dec 31, 2019"],
+                       "Heard On": ["12-31-2019", "01-02-2020", "09-17-2026"],
+                       "Last Played": ["01-10-26", "12-31-25", "06-01-24"],
+                       "Your Last Time": ["Aug 2026", "Jan 2019", "Sep 2025"],
+                       "Song": ["x", "y", "z"]})
+    out, fmts = sortable_dates(df)
+    assert list(out.sort_values("Date")["Date"].dt.year) == [2017, 2019, 2026]
+    assert list(out.sort_values("Heard On")["Song"]) == ["x", "y", "z"]
+    assert list(out["Last Played"].dt.year) == [2026, 2025, 2024]
+    assert fmts["Your Last Time"] == "MMM YYYY" and fmts["Date"] == "MMM D, YYYY"
+    assert out["Song"].tolist() == ["x", "y", "z"] and "Song" not in fmts
+    assert df["Date"].tolist()[0] == "Apr 09, 2026"                                # original untouched
+    assert sortable_dates(pd.DataFrame(columns=["Date"]))[1] == {}
