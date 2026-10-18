@@ -20,7 +20,8 @@ from analytics.upcoming import upcoming_table
 from data.snapshots import friendly_date, load_snapshot, snapshot_bytes
 from data.store import (clear_sync_cache, get_artist_show_count,
                         get_artist_setlist_page,
-                        load_csv_attendance, load_venue_overrides, sync_attended_shows)
+                        load_csv_attendance, load_upcoming_csv, load_venue_overrides,
+                        sync_attended_shows)
 from services.auth import (get_active_token, get_authorize_url, get_setlist_api_key,
                            is_spotify_connected)
 from services.setlistfm import SetlistFmError
@@ -80,6 +81,9 @@ try:
         raw_attendance = load_csv_attendance()
     # Shows you've marked for the future get their own section and stay out of every stat below
     raw_attendance, raw_upcoming = split_upcoming(raw_attendance)
+    # setlist.fm's API doesn't share "Upcoming Shows", so the owner's live in upcoming_shows.csv
+    if username.strip().lower() == default_username.lower():
+        raw_upcoming = pd.concat([raw_upcoming, load_upcoming_csv()], ignore_index=True)
     upcoming = upcoming_table(raw_upcoming)
     if raw_attendance.empty:
         if not upcoming.empty:
@@ -103,8 +107,8 @@ try:
     # 1a. Upcoming shows
     st.subheader("🗓️ Upcoming Shows")
     if upcoming.empty:
-        st.caption("No upcoming shows. Mark a future concert as attended on setlist.fm and it shows up here "
-                   "(it won't count toward your stats until it happens).")
+        st.caption("No upcoming shows. Add them to upcoming_shows.csv in the repo "
+                   "(setlist.fm doesn't share its Upcoming Shows list with apps).")
     else:
         nxt = upcoming.iloc[0]
         n1, n2 = st.columns([2, 1])
@@ -112,6 +116,8 @@ try:
         n2.metric("Shows on the calendar", len(upcoming))
         dated_table(upcoming, use_container_width=True, hide_index=True,
                     height=min(400, 38 + 35 * len(upcoming)))
+        st.caption("From upcoming_shows.csv in the repo. A show drops off this list once its date passes; "
+                   "mark it \"I was there\" on setlist.fm and it joins your stats.")
 
     # 1b. Highlights & badges
     hl = compute_highlights(df_att, df_concerts, df_songs)

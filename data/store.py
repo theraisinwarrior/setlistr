@@ -47,6 +47,7 @@ def clear_sync_cache() -> None:
     sync_attended_shows.clear()
 
 
+UPCOMING_CSV = "upcoming_shows.csv"  # future shows: setlist.fm's API doesn't share them
 VENUE_COORDS_CSV = "venue_coordinates.csv"  # optional: columns venue, lat, long (city optional)
 
 
@@ -68,6 +69,31 @@ def load_venue_overrides() -> pd.DataFrame:
     if not frames:
         return pd.DataFrame(columns=["venue", "city", "lat", "long"])
     return pd.concat(frames, ignore_index=True)
+
+
+def load_upcoming_csv() -> pd.DataFrame:
+    """Future shows typed into upcoming_shows.csv (date, artist, venue, city, state).
+
+    setlist.fm keeps "Upcoming Shows" separate from attended ones and its API only returns
+    attended shows, so the future ones live in this file. Returns the same column names as
+    the synced data (eventDate, artist, venue, city, state). Empty if the file is missing.
+    """
+    cols = ["eventDate", "artist", "venue", "city", "state", "song_count"]
+    try:
+        df = pd.read_csv(UPCOMING_CSV, dtype=str)
+    except FileNotFoundError:
+        return pd.DataFrame(columns=cols)
+    df.columns = [c.strip().lower() for c in df.columns]
+    if not {"date", "artist", "venue"}.issubset(df.columns):
+        return pd.DataFrame(columns=cols)
+    df = df.rename(columns={"date": "eventDate"})
+    for c in ("city", "state"):
+        if c not in df.columns:
+            df[c] = None
+    df = df.dropna(subset=["eventDate", "artist", "venue"])
+    df = df.apply(lambda col: col.str.strip() if col.dtype == object else col)
+    df["song_count"] = 0
+    return df[cols].reset_index(drop=True)
 
 
 def load_csv_attendance() -> pd.DataFrame:

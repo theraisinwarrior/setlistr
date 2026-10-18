@@ -24,6 +24,12 @@ def upcoming_table(df_upcoming: pd.DataFrame, today=None) -> pd.DataFrame:
     today = pd.Timestamp(today or pd.Timestamp.now()).normalize()
     d = df_upcoming.assign(_day=pd.to_datetime(df_upcoming["eventDate"], errors="coerce").dt.normalize())
     d = d.dropna(subset=["_day"])
+    d = d[d["_day"] >= today]  # a show in the list whose date has passed is no longer upcoming
+    if d.empty:
+        return pd.DataFrame(columns=COLUMNS)
+    # the same act listed twice (setlist.fm sync + upcoming_shows.csv) counts once
+    d = d.assign(_key=d["artist"].astype(str).str.lower().str.replace(r"[^a-z0-9]", "", regex=True))
+    d = d.drop_duplicates(subset=["_day", "_key"])
     rows = []
     for (day, venue), g in d.groupby(["_day", "venue"], sort=False):
         acts = [a for a in dict.fromkeys(g["artist"]) if str(a).lower() != "various artists"]

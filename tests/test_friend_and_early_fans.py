@@ -353,3 +353,22 @@ def test_venue_overrides_ignore_punctuation():
     overrides = pd.DataFrame([{"venue": "Under the K Bridge Park", "city": "Brooklyn", "lat": 40.7260, "long": -73.9312}])
     out, missing = apply_venue_overrides(raw, overrides)
     assert out.iloc[0]["lat"] == 40.7260 and out.iloc[0]["long"] == -73.9312 and missing.empty
+
+
+def test_upcoming_csv_rows_merge_and_expire(tmp_path, monkeypatch):
+    import pandas as pd
+    from analytics.upcoming import upcoming_table
+    from data import store
+    f = tmp_path / "up.csv"
+    f.write_text("date,artist,venue,city,state\n"
+                 "2026-11-12,Jalen Ngonda,Brooklyn Steel,Brooklyn,NY\n"
+                 "2026-11-12,Brooke Combe,Brooklyn Steel,Brooklyn,NY\n"
+                 "2026-10-01,Old Act,Somewhere,Brooklyn,NY\n")
+    monkeypatch.setattr(store, "UPCOMING_CSV", str(f))
+    csv_rows = store.load_upcoming_csv()
+    synced = pd.DataFrame([{"eventDate": "2026-11-12", "artist": "Jalen Ngonda", "venue": "Brooklyn Steel",
+                            "city": "Brooklyn", "state": "NY", "song_count": 0}])
+    t = upcoming_table(pd.concat([synced, csv_rows], ignore_index=True), today="2026-10-18")
+    assert len(t) == 1  # past show dropped, duplicate act counted once
+    assert t.iloc[0]["Lineup"] == "Jalen Ngonda, Brooke Combe"
+    assert t.iloc[0]["When"] == "In 4 weeks"
