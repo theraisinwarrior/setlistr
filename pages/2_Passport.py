@@ -6,7 +6,7 @@ import plotly.express as px
 import spotipy
 import streamlit as st
 
-from data.attendance import apply_venue_overrides, extract_covers, process_attendance
+from data.attendance import apply_venue_overrides, extract_covers, process_attendance, split_upcoming
 from data.display import dated_table
 from analytics.career import (career_plan, career_rare_songs, drop_covers, floor_by_times_heard,
                               pages_needed,
@@ -16,6 +16,7 @@ from analytics.early_fans import (early_fan_table, find_early_sightings, positio
 from analytics.nights import night_options, night_playlist_name, night_tracklist
 from analytics.passport_stats import compute_highlights, venue_top_performers
 from analytics.popularity import artists_to_scan, rank_artists_by_popularity
+from analytics.upcoming import upcoming_table
 from data.snapshots import friendly_date, load_snapshot, snapshot_bytes
 from data.store import (clear_sync_cache, get_artist_show_count,
                         get_artist_setlist_page,
@@ -26,6 +27,14 @@ from services.setlistfm import SetlistFmError
 from services.spotify_export import create_playlist
 
 SPOTIFY_GREEN = "#1DB954"
+
+
+def last_checked(result: dict, button: str) -> None:
+    """One status line for the slow scans: when the numbers were last checked, and where they came from."""
+    snap = result.get("snapshot")
+    when = friendly_date(snap.get("created") if snap else result.get("checked"))
+    source = "saved results" if snap else "live scan"
+    st.caption(f"🕒 Last checked {when} · {source}. Click **{button}** to refresh.")
 
 st.title("🎫 My Concert Passport")
 st.caption("Visualizing personal concert attendance history logged on Setlist.fm")
@@ -69,6 +78,15 @@ elif not api_key_for_sync:
 try:
     if raw_attendance is None:
         raw_attendance = load_csv_attendance()
+    # Shows you've marked for the future get their own section and stay out of every stat below
+    raw_attendance, raw_upcoming = split_upcoming(raw_attendance)
+    upcoming = upcoming_table(raw_upcoming)
+    if raw_attendance.empty:
+        if not upcoming.empty:
+            st.subheader("🗓️ Upcoming Shows")
+            dated_table(upcoming, use_container_width=True, hide_index=True)
+        st.info("No past concerts yet. Your stats will appear here after your first show.")
+        st.stop()
     df_att, df_concerts, df_songs = process_attendance(raw_attendance)
 
     # 1. Key metric cards
@@ -81,6 +99,19 @@ try:
     col3.metric("Unique Artists", df_att['artist'].nunique())
     col4.metric("Venues Visited", df_concerts['venue'].nunique())
     col5.metric("Cities Visited", df_concerts['city'].nunique())
+
+    # 1a. Upcoming shows
+    st.subheader("🗓️ Upcoming Shows")
+    if upcoming.empty:
+        st.caption("No upcoming shows. Mark a future concert as attended on setlist.fm and it shows up here "
+                   "(it won't count toward your stats until it happens).")
+    else:
+        nxt = upcoming.iloc[0]
+        n1, n2 = st.columns([2, 1])
+        n1.metric("Next up", nxt["Lineup"].split(", ")[0], f"{nxt['When']} · {nxt['Venue']}", delta_color="off")
+        n2.metric("Shows on the calendar", len(upcoming))
+        dated_table(upcoming, use_container_width=True, hide_index=True,
+                    height=min(400, 38 + 35 * len(upcoming)))
 
     # 1b. Highlights & badges
     hl = compute_highlights(df_att, df_concerts, df_songs)
@@ -221,9 +252,18 @@ try:
     if venues_needing_coords is not None and not venues_needing_coords.empty:
         with st.expander(f"📍 {len(venues_needing_coords)} venue(s) need exact map coordinates"):
             st.write("These venues have no saved coordinates, so setlist.fm's city-level "
-                     "location is used and they may stack on top of each other. To fix one, add a row "
-                     "(`venue,city,lat,long`) to `venue_coordinates.csv` in your GitHub repo.")
+                     "location is used and they may stack on top of each other.")
             st.dataframe(venues_needing_coords, use_container_width=True, hide_index=True)
+            st.markdown("**To fix one:** open `venue_coordinates.csv` in your GitHub repo, click the pencil to "
+                        "edit, and add a line for each venue. Get the numbers by right-clicking the spot in "
+                        "Google Maps (the first number is lat, the second is long). Copy these lines and "
+                        "fill in the two numbers:")
+            def _csv(v):
+                v = str(v)
+                return f'"{v}"' if "," in v else v
+            st.code("\n".join(f"{_csv(r.venue)},{_csv(r.city)},LAT,LONG"
+                               for r in venues_needing_coords.itertuples()),
+                    language="text")
 
     st.divider()
 
@@ -300,7 +340,8 @@ try:
                         histories[mbid] = summarize_history(artist_pages)
                     progress.empty()
                     table, stats = career_rare_songs(df_att, histories)
-                    st.session_state["rare_result"] = {"table": table, "stats": stats, "hit_limit": hit_limit}
+                    st.session_state["rare_result"] = {"table": table, "stats": stats, "hit_limit": hit_limit,
+                                                       "checked": datetime.now().strftime("%Y-%m-%d")}
 
             res = st.session_state.get("rare_result")
             if res is not None and "Times Played" not in res["table"].columns:
@@ -311,9 +352,7 @@ try:
             if res:
                 table, stats = res["table"], res["stats"]
                 full_table = table  # what gets saved as a snapshot (covers are filtered when shown)
-                if res.get("snapshot"):
-                    st.caption(f"📌 Saved results from {friendly_date(res['snapshot'].get('created'))}. "
-                               "Click **Find my rarest songs** to re-scan live.")
+                last_checked(res, "Find my rarest songs")
                 table = floor_by_times_heard(table, df_att)
                 if not st.toggle("Include cover songs", value=False, key="rare_covers",
                                  help="Covers are often one-off tributes, so they're hidden by default."):
@@ -406,6 +445,7 @@ try:
             st.session_state["pop_result"] = {
                 "table": rank_artists_by_popularity(df_att, pop_counts),
                 "hit_limit": pop_hit_limit,
+                "checked": datetime.now().strftime("%Y-%m-%d"),
             }
 
     pop = st.session_state.get("pop_result")
@@ -413,9 +453,7 @@ try:
         pop = {"table": pop_snap["table"], "hit_limit": False, "snapshot": pop_snap}
     if pop:
         pop_table = pop["table"]
-        if pop.get("snapshot"):
-            st.caption(f"📌 Saved results from {friendly_date(pop['snapshot'].get('created'))}. "
-                       "Click **Rank my artists by popularity** to refresh live.")
+        last_checked(pop, "Rank my artists by popularity")
         if pop["hit_limit"]:
             st.warning("setlist.fm's request limit was hit, so this list is partial. Click the button "
                        "again in a bit; everything already checked is remembered.")
@@ -487,7 +525,8 @@ try:
                     if pos:
                         positions[position_key(mbid, when)] = pos
                 early_progress.empty()
-                st.session_state["early_result"] = {"positions": positions, "hit_limit": early_hit}
+                st.session_state["early_result"] = {"positions": positions, "hit_limit": early_hit,
+                                                    "checked": datetime.now().strftime("%Y-%m-%d")}
 
         early_res = st.session_state.get("early_result")
         if early_res is not None and "positions" not in early_res:
@@ -495,13 +534,13 @@ try:
         early_from_snap = False
         if early_res:
             early_table = early_fan_table(sightings, early_res["positions"])
+            last_checked(early_res, "Measure their growth")
             if early_res["hit_limit"]:
                 st.warning("setlist.fm's request limit was hit, so this is only partly measured. Click the "
                            "button again later; everything already checked is remembered.")
         elif early_snap and not early_snap["table"].empty:
             early_table, early_from_snap = rank_early_table(early_snap["table"]), True
-            st.caption(f"📌 Saved results from {friendly_date(early_snap.get('created'))}. "
-                       "Click **Measure their growth** to refresh live.")
+            last_checked({"snapshot": early_snap}, "Measure their growth")
         else:
             early_table = early_fan_table(sightings)
 

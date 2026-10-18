@@ -2,7 +2,7 @@
 import streamlit as st
 
 from analytics.compare import compare_histories
-from data.attendance import process_attendance
+from data.attendance import process_attendance, split_upcoming
 from data.display import dated_table
 from data.store import sync_attended_shows
 from services.auth import get_setlist_api_key
@@ -39,8 +39,8 @@ if me.lower() == friend.lower():
 
 try:
     with st.spinner(f"Loading concerts for {me} and {friend} from setlist.fm..."):
-        raw_me = sync_attended_shows(me, api_key)
-        raw_friend = sync_attended_shows(friend, api_key)
+        raw_me, _ = split_upcoming(sync_attended_shows(me, api_key))  # past shows only
+        raw_friend, _ = split_upcoming(sync_attended_shows(friend, api_key))
 except SetlistFmError as e:
     st.error(str(e))
     st.stop()
