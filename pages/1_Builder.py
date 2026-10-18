@@ -7,7 +7,7 @@ import streamlit as st
 
 from analytics.heard_live import MODES, apply_heard_mode, heard_song_keys
 from analytics.setlist_stats import build_song_table, filter_shows
-from data.attendance import process_attendance
+from data.attendance import process_attendance, split_upcoming
 from data.display import dated_table
 from data.store import sync_attended_shows
 from services.auth import (get_active_token, get_authorize_url, get_setlist_api_key,
@@ -232,7 +232,7 @@ if st.session_state.get("raw_setlists"):
         if heard_on and heard_user.strip() and setlist_api_key:
             try:
                 with st.spinner("Checking your concert history..."):
-                    raw_att = sync_attended_shows(heard_user.strip(), setlist_api_key)
+                    raw_att, _ = split_upcoming(sync_attended_shows(heard_user.strip(), setlist_api_key))
                 att, _, _ = process_attendance(raw_att) if not raw_att.empty else (None, None, None)
                 heard, seen_n = heard_song_keys(att, current_artist, st.session_state.get("artist_mbid"))
                 heard_mode = MODES[heard_mode_label]

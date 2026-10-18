@@ -1,5 +1,6 @@
 """Pure data conversion for attended shows (pandas only, no Streamlit)."""
 import json
+import re
 
 import pandas as pd
 
@@ -11,11 +12,34 @@ def _norm(value) -> str:
     return " ".join(str(value).lower().split()) if pd.notna(value) else ""
 
 
+def _loose(value) -> str:
+    """Letters and digits only, so "Under the 'K' Bridge Park" matches "Under the K Bridge Park"."""
+    return re.sub(r"[^a-z0-9]", "", _norm(value))
+
+
+def split_upcoming(df_raw: pd.DataFrame, today=None):
+    """Split attended setlists into (past, upcoming).
+
+    Upcoming = dated after today, or today with no songs logged yet (the show hasn't happened).
+    Shows without a readable date stay in the past table.
+    """
+    if df_raw is None or df_raw.empty or "eventDate" not in df_raw.columns:
+        return df_raw, (df_raw.iloc[0:0] if df_raw is not None else df_raw)
+    today = pd.Timestamp(today or pd.Timestamp.now()).normalize()
+    when = pd.to_datetime(df_raw["eventDate"], errors="coerce").dt.normalize()
+    songs = (pd.to_numeric(df_raw["song_count"], errors="coerce").fillna(0)
+             if "song_count" in df_raw.columns else pd.Series(0, index=df_raw.index))
+    upcoming = (when > today) | ((when == today) & (songs == 0))
+    upcoming = upcoming.fillna(False)
+    return df_raw[~upcoming].copy(), df_raw[upcoming].copy()
+
+
 def apply_venue_overrides(df_raw: pd.DataFrame, overrides: pd.DataFrame):
     """Replace setlist.fm's city-level coordinates with hand-corrected venue coordinates.
 
     `overrides` needs columns venue, lat, long (and optionally city). Rows earlier in
-    `overrides` win. Matching tries venue + city first, then venue name alone.
+    `overrides` win. Matching tries venue + city first, then venue name alone, then the
+    venue name ignoring punctuation and spacing.
 
     Returns (updated_df, needs_coords) where needs_coords lists venues that had no
     override, so they still sit on setlist.fm's city-level point.
@@ -24,7 +48,7 @@ def apply_venue_overrides(df_raw: pd.DataFrame, overrides: pd.DataFrame):
     if df.empty:
         return df, pd.DataFrame(columns=["venue", "city", "state", "shows"])
 
-    by_venue_city, by_venue = {}, {}
+    by_venue_city, by_venue, by_loose = {}, {}, {}
     if overrides is not None and not overrides.empty:
         for _, r in overrides.iterrows():
             lat = pd.to_numeric(r.get("lat"), errors="coerce")
@@ -34,11 +58,13 @@ def apply_venue_overrides(df_raw: pd.DataFrame, overrides: pd.DataFrame):
             v = _norm(r.get("venue"))
             by_venue_city.setdefault((v, _norm(r.get("city"))), (lat, lon))
             by_venue.setdefault(v, (lat, lon))
+            by_loose.setdefault(_loose(r.get("venue")), (lat, lon))
 
     matched = []
     for i, row in df.iterrows():
         v = _norm(row["venue"])
-        hit = by_venue_city.get((v, _norm(row["city"]))) or by_venue.get(v)
+        hit = (by_venue_city.get((v, _norm(row["city"]))) or by_venue.get(v)
+               or by_loose.get(_loose(row["venue"])))
         if hit:
             df.at[i, "lat"], df.at[i, "long"] = hit
         matched.append(bool(hit))

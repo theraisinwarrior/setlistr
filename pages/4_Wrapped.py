@@ -7,7 +7,7 @@ import streamlit as st
 from analytics.career import drop_covers, floor_by_times_heard
 from analytics.wrapped import available_years, highlight_lines, wrapped_summary
 from analytics.wrapped_image import render_wrapped_png
-from data.attendance import apply_venue_overrides, process_attendance
+from data.attendance import apply_venue_overrides, process_attendance, split_upcoming
 from data.snapshots import load_snapshot
 from data.store import load_csv_attendance, load_venue_overrides, sync_attended_shows
 from services.auth import get_setlist_api_key
@@ -48,6 +48,10 @@ if raw is None or raw.empty:
         st.info("No concert data yet. Mark shows as attended on setlist.fm.")
         st.stop()
 
+raw, _ = split_upcoming(raw)  # upcoming shows haven't happened yet, so they don't count
+if raw.empty:
+    st.info("No past concerts yet.")
+    st.stop()
 df_att, _, _ = process_attendance(raw)
 years = available_years(df_att)
 if not years:

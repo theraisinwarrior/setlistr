@@ -1,17 +1,7 @@
 {
  "kind": "early_fans",
- "created": "2026-10-15",
+ "created": "2026-10-18",
  "rows": [
-  {
-   "Artist": "Sophisticuffs",
-   "Opened For": "Vampire Weekend",
-   "Date": "Sep 15, 2025",
-   "Venue": "Wellmont Theater",
-   "Later Headlined": "",
-   "Shows Before": 0,
-   "Shows Since": 3,
-   "Glow-up": "Their first logged show!"
-  },
   {
    "Artist": "Jalen Ngonda",
    "Opened For": "Lake Street Dive",
@@ -19,8 +9,8 @@
    "Venue": "Beacon Theatre",
    "Later Headlined": "Rough Trade Below (Jun 2026)",
    "Shows Before": 11,
-   "Shows Since": 195,
-   "Glow-up": "\u00d717.7"
+   "Shows Since": 196,
+   "Glow-up": "\u00d717.8"
   },
   {
    "Artist": "Mikaela Davis",
@@ -103,16 +93,6 @@
    "Glow-up": "\u00d71.8"
   },
   {
-   "Artist": "Everybody Out!",
-   "Opened For": "Dropkick Murphys",
-   "Date": "Sep 15, 2007",
-   "Venue": "Roseland Ballroom",
-   "Later Headlined": "",
-   "Shows Before": 4,
-   "Shows Since": 7,
-   "Glow-up": "\u00d71.8"
-  },
-  {
    "Artist": "Gracie Abrams",
    "Opened For": "Taylor Swift",
    "Date": "May 27, 2023",
@@ -149,8 +129,8 @@
    "Venue": "Brooklyn Steel",
    "Later Headlined": "",
    "Shows Before": 40,
-   "Shows Since": 50,
-   "Glow-up": "\u00d71.2"
+   "Shows Since": 51,
+   "Glow-up": "\u00d71.3"
   },
   {
    "Artist": "Camila Cabello",
@@ -170,6 +150,16 @@
    "Later Headlined": "",
    "Shows Before": 59,
    "Shows Since": 58,
+   "Glow-up": "\u00d71.0"
+  },
+  {
+   "Artist": "Palmyra",
+   "Opened For": "The Backseat Lovers",
+   "Date": "Jun 05, 2025",
+   "Venue": "Warsaw",
+   "Later Headlined": "",
+   "Shows Before": 34,
+   "Shows Since": 33,
    "Glow-up": "\u00d71.0"
   },
   {
@@ -193,16 +183,6 @@
    "Glow-up": "\u00d70.9"
   },
   {
-   "Artist": "Palmyra",
-   "Opened For": "The Backseat Lovers",
-   "Date": "Jun 05, 2025",
-   "Venue": "Warsaw",
-   "Later Headlined": "",
-   "Shows Before": 34,
-   "Shows Since": 30,
-   "Glow-up": "\u00d70.9"
-  },
-  {
    "Artist": "Annabelle Dinda",
    "Opened For": "Noah Kahan",
    "Date": "Jul 19, 2026",
@@ -210,16 +190,6 @@
    "Later Headlined": "",
    "Shows Before": 28,
    "Shows Since": 23,
-   "Glow-up": "\u00d70.8"
-  },
-  {
-   "Artist": "Keenan O'Meara",
-   "Opened For": "Atta Boy",
-   "Date": "Sep 11, 2025",
-   "Venue": "Baby's All Right",
-   "Later Headlined": "",
-   "Shows Before": 8,
-   "Shows Since": 6,
    "Glow-up": "\u00d70.8"
   },
   {
@@ -238,8 +208,8 @@
    "Date": "Jul 21, 2018",
    "Venue": "MetLife Stadium",
    "Later Headlined": "",
-   "Shows Before": 486,
-   "Shows Since": 336,
+   "Shows Before": 487,
+   "Shows Since": 338,
    "Glow-up": "\u00d70.7"
   },
   {
@@ -259,17 +229,7 @@
    "Venue": "Beacon Theatre",
    "Later Headlined": "",
    "Shows Before": 330,
-   "Shows Since": 213,
-   "Glow-up": "\u00d70.6"
-  },
-  {
-   "Artist": "Dari Bay",
-   "Opened For": "Whitney",
-   "Date": "Apr 09, 2026",
-   "Venue": "Music Hall of Williamsburg",
-   "Later Headlined": "",
-   "Shows Before": 10,
-   "Shows Since": 6,
+   "Shows Since": 214,
    "Glow-up": "\u00d70.6"
   },
   {
@@ -293,23 +253,13 @@
    "Glow-up": "\u00d70.5"
   },
   {
-   "Artist": "Antwaun Stanley",
-   "Opened For": "The Main Squeeze",
-   "Date": "Mar 14, 2025",
-   "Venue": "Irving Plaza",
-   "Later Headlined": "",
-   "Shows Before": 6,
-   "Shows Since": 3,
-   "Glow-up": "\u00d70.5"
-  },
-  {
    "Artist": "Olivia Dean",
    "Opened For": "Sabrina Carpenter",
    "Date": "Oct 29, 2025",
    "Venue": "Madison Square Garden",
    "Later Headlined": "",
    "Shows Before": 160,
-   "Shows Since": 72,
+   "Shows Since": 73,
    "Glow-up": "\u00d70.5"
   },
   {
@@ -329,7 +279,7 @@
    "Venue": "Barclays Center",
    "Later Headlined": "",
    "Shows Before": 1245,
-   "Shows Since": 460,
+   "Shows Since": 462,
    "Glow-up": "\u00d70.4"
   },
   {
@@ -373,16 +323,6 @@
    "Glow-up": "\u00d70.3"
   },
   {
-   "Artist": "El Michels Affair",
-   "Opened For": "Alabama Shakes",
-   "Date": "Sep 17, 2025",
-   "Venue": "Forest Hills Stadium",
-   "Later Headlined": "",
-   "Shows Before": 7,
-   "Shows Since": 2,
-   "Glow-up": "\u00d70.3"
-  },
-  {
    "Artist": "Phantogram",
    "Opened For": "Queens of the Stone Age",
    "Date": "Aug 12, 2023",
@@ -409,7 +349,7 @@
    "Venue": "Northwell Health at Jones Beach Theater",
    "Later Headlined": "",
    "Shows Before": 968,
-   "Shows Since": 248,
+   "Shows Since": 250,
    "Glow-up": "\u00d70.3"
   },
   {
@@ -418,7 +358,7 @@
    "Date": "Dec 31, 2019",
    "Venue": "Barclays Center",
    "Later Headlined": "",
-   "Shows Before": 854,
+   "Shows Before": 855,
    "Shows Since": 188,
    "Glow-up": "\u00d70.2"
   },
@@ -450,16 +390,6 @@
    "Later Headlined": "",
    "Shows Before": 111,
    "Shows Since": 21,
-   "Glow-up": "\u00d70.2"
-  },
-  {
-   "Artist": "Jacob Jeffries",
-   "Opened For": "Lawrence",
-   "Date": "Oct 30, 2025",
-   "Venue": "Wellmont Theater",
-   "Later Headlined": "",
-   "Shows Before": 11,
-   "Shows Since": 2,
    "Glow-up": "\u00d70.2"
   },
   {
@@ -509,7 +439,7 @@
    "Venue": "MetLife Stadium",
    "Later Headlined": "Madison Square Garden (Jun 2026)",
    "Shows Before": 535,
-   "Shows Since": 48,
+   "Shows Since": 50,
    "Glow-up": "\u00d70.1"
   },
   {
@@ -520,6 +450,26 @@
    "Later Headlined": "",
    "Shows Before": 68,
    "Shows Since": 6,
+   "Glow-up": "\u00d70.1"
+  },
+  {
+   "Artist": "dhruv",
+   "Opened For": "Jessie Ware",
+   "Date": "Oct 08, 2026",
+   "Venue": "Radio City Music Hall",
+   "Later Headlined": "",
+   "Shows Before": 37,
+   "Shows Since": 3,
+   "Glow-up": "\u00d70.1"
+  },
+  {
+   "Artist": "Medium Build",
+   "Opened For": "Mumford & Sons",
+   "Date": "Aug 11, 2026",
+   "Venue": "Madison Square Garden",
+   "Later Headlined": "",
+   "Shows Before": 188,
+   "Shows Since": 15,
    "Glow-up": "\u00d70.1"
   },
   {
@@ -543,16 +493,6 @@
    "Glow-up": "\u00d70.1"
   },
   {
-   "Artist": "Medium Build",
-   "Opened For": "Mumford & Sons",
-   "Date": "Aug 11, 2026",
-   "Venue": "Madison Square Garden",
-   "Later Headlined": "",
-   "Shows Before": 188,
-   "Shows Since": 14,
-   "Glow-up": "\u00d70.1"
-  },
-  {
    "Artist": "The Japanese House",
    "Opened For": "Lorde",
    "Date": "Oct 01, 2025",
@@ -570,16 +510,6 @@
    "Later Headlined": "",
    "Shows Before": 46,
    "Shows Since": 3,
-   "Glow-up": "\u00d70.1"
-  },
-  {
-   "Artist": "dhruv",
-   "Opened For": "Jessie Ware",
-   "Date": "Oct 08, 2026",
-   "Venue": "Radio City Music Hall",
-   "Later Headlined": "",
-   "Shows Before": 37,
-   "Shows Since": 2,
    "Glow-up": "\u00d70.1"
   },
   {
@@ -603,6 +533,16 @@
    "Glow-up": "\u00d70.0"
   },
   {
+   "Artist": "Jamie xx",
+   "Opened For": "Harry Styles",
+   "Date": "Sep 16, 2026",
+   "Venue": "Madison Square Garden",
+   "Later Headlined": "",
+   "Shows Before": 440,
+   "Shows Since": 12,
+   "Glow-up": "\u00d70.0"
+  },
+  {
    "Artist": "Fcukers",
    "Opened For": "The Strokes",
    "Date": "Oct 02, 2026",
@@ -610,16 +550,6 @@
    "Later Headlined": "",
    "Shows Before": 188,
    "Shows Since": 5,
-   "Glow-up": "\u00d70.0"
-  },
-  {
-   "Artist": "Jamie xx",
-   "Opened For": "Harry Styles",
-   "Date": "Sep 16, 2026",
-   "Venue": "Madison Square Garden",
-   "Later Headlined": "",
-   "Shows Before": 440,
-   "Shows Since": 11,
    "Glow-up": "\u00d70.0"
   },
   {
@@ -661,6 +591,76 @@
    "Shows Before": 693,
    "Shows Since": 0,
    "Glow-up": "\u00d70.0"
+  },
+  {
+   "Artist": "Dari Bay",
+   "Opened For": "Whitney",
+   "Date": "Apr 09, 2026",
+   "Venue": "Music Hall of Williamsburg",
+   "Later Headlined": "",
+   "Shows Before": 10,
+   "Shows Since": 6,
+   "Glow-up": "Too few shows logged"
+  },
+  {
+   "Artist": "Jacob Jeffries",
+   "Opened For": "Lawrence",
+   "Date": "Oct 30, 2025",
+   "Venue": "Wellmont Theater",
+   "Later Headlined": "",
+   "Shows Before": 11,
+   "Shows Since": 2,
+   "Glow-up": "Too few shows logged"
+  },
+  {
+   "Artist": "El Michels Affair",
+   "Opened For": "Alabama Shakes",
+   "Date": "Sep 17, 2025",
+   "Venue": "Forest Hills Stadium",
+   "Later Headlined": "",
+   "Shows Before": 7,
+   "Shows Since": 2,
+   "Glow-up": "Too few shows logged"
+  },
+  {
+   "Artist": "Sophisticuffs",
+   "Opened For": "Vampire Weekend",
+   "Date": "Sep 15, 2025",
+   "Venue": "Wellmont Theater",
+   "Later Headlined": "",
+   "Shows Before": 0,
+   "Shows Since": 3,
+   "Glow-up": "Too few shows logged"
+  },
+  {
+   "Artist": "Keenan O'Meara",
+   "Opened For": "Atta Boy",
+   "Date": "Sep 11, 2025",
+   "Venue": "Baby's All Right",
+   "Later Headlined": "",
+   "Shows Before": 8,
+   "Shows Since": 6,
+   "Glow-up": "Too few shows logged"
+  },
+  {
+   "Artist": "Antwaun Stanley",
+   "Opened For": "The Main Squeeze",
+   "Date": "Mar 14, 2025",
+   "Venue": "Irving Plaza",
+   "Later Headlined": "",
+   "Shows Before": 6,
+   "Shows Since": 3,
+   "Glow-up": "Too few shows logged"
+  },
+  {
+   "Artist": "Everybody Out!",
+   "Opened For": "Dropkick Murphys",
+   "Date": "Sep 15, 2007",
+   "Venue": "Roseland Ballroom",
+   "Later Headlined": "",
+   "Shows Before": 4,
+   "Shows Since": 7,
+   "Glow-up": "Too few shows logged"
   }
  ]
 }

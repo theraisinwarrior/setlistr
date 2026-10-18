@@ -314,3 +314,42 @@ def test_sortable_dates():
     assert out["Song"].tolist() == ["x", "y", "z"] and "Song" not in fmts
     assert df["Date"].tolist()[0] == "Apr 09, 2026"                                # original untouched
     assert sortable_dates(pd.DataFrame(columns=["Date"]))[1] == {}
+
+
+def _raw(rows):
+    base = {"artist_mbid": None, "city": "Brooklyn", "state": "NY", "lat": 40.7, "long": -73.9,
+            "tour": None, "url": "", "songs": "[]", "covers": "[]"}
+    return pd.DataFrame([{**base, **r} for r in rows])
+
+
+def test_split_upcoming_and_table():
+    from analytics.upcoming import countdown, upcoming_table
+    from data.attendance import split_upcoming
+    today = pd.Timestamp("2026-10-18")
+    raw = _raw([
+        {"eventDate": "2026-10-08", "artist": "Past Band", "venue": "Radio City", "song_count": 20},
+        {"eventDate": "2026-10-18", "artist": "Tonight Band", "venue": "Bowery", "song_count": 0},
+        {"eventDate": "2026-10-18", "artist": "Early Show", "venue": "Club", "song_count": 12},   # already logged
+        {"eventDate": "2026-11-20", "artist": "Headliner", "venue": "Under the K Bridge Park", "song_count": 0},
+        {"eventDate": "2026-11-20", "artist": "Opener", "venue": "Under the K Bridge Park", "song_count": 0},
+        {"eventDate": "2027-03-08", "artist": "Greta Van Fleet", "venue": "MSG", "song_count": 0},
+    ])
+    past, up = split_upcoming(raw, today)
+    assert set(past["artist"]) == {"Past Band", "Early Show"}
+    assert set(up["artist"]) == {"Tonight Band", "Headliner", "Opener", "Greta Van Fleet"}
+    t = upcoming_table(up, today)
+    assert list(t["When"]) == ["Tonight", "In 5 weeks", "In 5 months"]
+    assert t.iloc[1]["Lineup"] == "Headliner, Opener" and t.iloc[1]["City"] == "Brooklyn, NY"
+    assert countdown("2026-10-19", today) == "Tomorrow" and countdown("2026-10-25", today) == "In 7 days"
+    assert upcoming_table(up.iloc[0:0], today).empty
+    p2, u2 = split_upcoming(raw.iloc[0:0], today)
+    assert p2.empty and u2.empty
+
+
+def test_venue_overrides_ignore_punctuation():
+    from data.attendance import apply_venue_overrides
+    raw = _raw([{"eventDate": "2026-10-17", "artist": "Gryffin", "venue": "Under the 'K' Bridge Park",
+                 "song_count": 15}])
+    overrides = pd.DataFrame([{"venue": "Under the K Bridge Park", "city": "Brooklyn", "lat": 40.7260, "long": -73.9312}])
+    out, missing = apply_venue_overrides(raw, overrides)
+    assert out.iloc[0]["lat"] == 40.7260 and out.iloc[0]["long"] == -73.9312 and missing.empty
