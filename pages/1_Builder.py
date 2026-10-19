@@ -287,11 +287,14 @@ if st.session_state.get("raw_setlists"):
                             uri, matched_details, match_method = search_spotify_track(
                                 sp, current_artist, song, orig)
 
-                            if uri:
+                            duplicate = bool(uri) and uri in track_uris
+                            if duplicate:
+                                match_method = "Same track as an earlier song, added once"
+                            elif uri:
                                 track_uris.append(uri)
                             report_rows.append({
                                 "Setlist.fm Song": song,
-                                "Status": "✅ Matched" if uri else "❌ Missed",
+                                "Status": "🔁 Duplicate" if duplicate else ("✅ Matched" if uri else "❌ Missed"),
                                 "Matched Spotify Track": matched_details,
                                 "Match Method": match_method,
                             })

@@ -45,13 +45,16 @@ def build_song_table(filtered_shows, hide_tape, hide_covers, min_freq,
     for show in filtered_shows:
         event_date = show.get("eventDate")
         show_url = show.get("url", "")
+        seen_this_show = set()  # a reprise or repeat counts once, so Frequency can't pass 100%
         for s in show.get("sets", {}).get("set", []):
             for song in s.get("song", []):
                 if hide_tape and song.get("tape", False):
                     continue
                 song_name = song.get("name")
                 if song_name:
-                    song_dates[song_name].append((event_date, show_url))
+                    if song_name not in seen_this_show:
+                        seen_this_show.add(song_name)
+                        song_dates[song_name].append((event_date, show_url))
                     cover_data = song.get("cover")
                     if cover_data and "name" in cover_data:
                         song_covers[song_name] = cover_data["name"]

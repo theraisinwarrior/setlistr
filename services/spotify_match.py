@@ -1,5 +1,6 @@
 """Tiered Spotify track matching. Pure logic, no Streamlit imports."""
 import re
+import unicodedata
 
 STOP_WORDS = {
     'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'by',
@@ -8,18 +9,32 @@ STOP_WORDS = {
 }
 
 
+def _clean(text):
+    """Lowercase letters and digits in any script, with accents dropped ("Beyoncé" -> "beyonce").
+
+    Japanese, Cyrillic, etc. are kept, so those names don't clean down to an empty string.
+    """
+    text = unicodedata.normalize("NFKD", text.casefold())
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return re.sub(r'[\W_]', '', text)
+
+
 def is_artist_match(target_artist, item_artists):
-    target_clean = re.sub(r'[^a-zA-Z0-9]', '', target_artist.lower())
+    target_clean = _clean(target_artist)
+    if not target_clean:
+        return False  # an empty string is "in" every name, so it would match anyone
     for a in item_artists:
-        a_clean = re.sub(r'[^a-zA-Z0-9]', '', a.get("name", "").lower())
-        if target_clean in a_clean or a_clean in target_clean:
+        a_clean = _clean(a.get("name", ""))
+        if a_clean and (target_clean in a_clean or a_clean in target_clean):
             return True
     return False
 
 
 def is_reasonable_match(requested_title, matched_title):
-    req_clean = re.sub(r'[^a-zA-Z0-9]', '', requested_title.lower())
-    match_clean = re.sub(r'[^a-zA-Z0-9]', '', matched_title.lower())
+    req_clean = _clean(requested_title)
+    match_clean = _clean(matched_title)
+    if not req_clean or not match_clean:
+        return False
 
     if req_clean in match_clean or match_clean in req_clean:
         return True

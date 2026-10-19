@@ -14,12 +14,15 @@ def create_playlist(sp, tracks, name: str, description: str = ""):
     for t in tracks:
         original = t.get("original") or "Official Release"
         uri, details, method = search_spotify_track(sp, t["artist"], t["song"], original)
-        if uri:
+        duplicate = bool(uri) and uri in uris  # e.g. a reprise, or two entries for one track
+        if duplicate:
+            method = "Same track as an earlier song, added once"
+        elif uri:
             uris.append(uri)
         report.append({
             "Setlist.fm Song": t["song"],
             "Artist": t["artist"],
-            "Status": "✅ Matched" if uri else "❌ Missed",
+            "Status": "🔁 Duplicate" if duplicate else ("✅ Matched" if uri else "❌ Missed"),
             "Matched Spotify Track": details,
             "Match Method": method,
         })
