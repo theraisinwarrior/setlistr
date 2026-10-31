@@ -75,7 +75,8 @@ def load_upcoming_csv() -> pd.DataFrame:
     """Future shows typed into upcoming_shows.csv (date, artist, venue, city, state).
 
     setlist.fm keeps "Upcoming Shows" separate from attended ones and its API only returns
-    attended shows, so the future ones live in this file. Returns the same column names as
+    attended shows, so the future ones live in this file (refresh it with
+    `python scripts/sync_upcoming.py`). Returns the same column names as
     the synced data (eventDate, artist, venue, city, state). Empty if the file is missing.
     """
     cols = ["eventDate", "artist", "venue", "city", "state", "song_count"]
