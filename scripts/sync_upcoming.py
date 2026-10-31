@@ -8,7 +8,7 @@ Chrome (⌘S, "Webpage, HTML Only") and this reads the saved copy:
     python3 scripts/sync_upcoming.py --dry-run    # show the changes, don't write
     python3 scripts/sync_upcoming.py --file path/to/page.html
 
-Then review the diff, commit and push upcoming_shows.csv as usual.
+Then commit and push upcoming_shows.csv, or just run ./sync, which does all of this.
 """
 import argparse
 import csv
@@ -123,7 +123,7 @@ def main(argv=None) -> int:
         print("\nDry run: nothing written.")
         return 0
     UPCOMING_CSV.write_text(new, encoding="utf-8")
-    print(f"\nWrote {len(rows)} rows to upcoming_shows.csv. Review, then commit and push.")
+    print(f"\nWrote {len(rows)} rows to upcoming_shows.csv.")
     return 0
 
 

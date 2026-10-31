@@ -1,0 +1,35 @@
+#!/bin/bash
+# One command to refresh Upcoming Shows: ./sync
+# First save your setlist.fm attended page in Chrome (⌘S, "Webpage, HTML Only").
+# Pulls the latest code, rewrites upcoming_shows.csv from the newest saved page in
+# ~/Downloads, shows what changed, and pushes it after you confirm.
+set -e
+cd "$(dirname "$0")"
+
+if [ "$(git rev-parse --abbrev-ref HEAD)" != "main" ]; then
+  echo "Switching to main..."
+  git checkout -q main
+fi
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "You have unsaved changes in this folder. Commit or discard them first (git status shows them)."
+  exit 1
+fi
+git pull -q --ff-only
+
+python3 scripts/sync_upcoming.py
+
+if git diff --quiet upcoming_shows.csv; then
+  exit 0  # nothing changed
+fi
+
+echo
+read -r -p "Push these changes to the app? [y/N] " answer
+if [[ "$answer" =~ ^[Yy] ]]; then
+  git add upcoming_shows.csv
+  git commit -q -m "Update upcoming shows"
+  git push -q
+  echo "Pushed. The app updates in about 2 minutes."
+else
+  git checkout -q -- upcoming_shows.csv
+  echo "Not pushed. upcoming_shows.csv is back the way it was."
+fi
