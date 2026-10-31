@@ -46,3 +46,16 @@ def test_main_writes_csv_from_file(tmp_path, monkeypatch):
     assert main(["--file", str(FIXTURE)]) == 0
     assert target.read_text().count("\n") == 17
     assert main(["--file", str(FIXTURE)]) == 0  # second run: already up to date
+
+
+def test_newest_saved_page_picks_latest_chrome_save(tmp_path):
+    import os
+    from scripts.sync_upcoming import newest_saved_page
+    assert newest_saved_page(tmp_path) is None
+    old = tmp_path / "raisinwarrior's attended concerts _ setlist.fm.html"
+    new = tmp_path / "raisinwarrior's attended concerts _ setlist.fm (1).html"
+    (tmp_path / "unrelated.html").write_text("x")
+    for i, p in enumerate((old, new)):
+        p.write_text("x")
+        os.utime(p, (1000 + i, 1000 + i))
+    assert newest_saved_page(tmp_path) == new
