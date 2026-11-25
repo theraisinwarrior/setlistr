@@ -74,13 +74,3 @@ def watchlist_table(df_watch: pd.DataFrame, df_tickets: pd.DataFrame = None, tod
     out = pd.DataFrame(rows).sort_values(["_sort", "Artist"], kind="stable")
     return out[COLUMNS].reset_index(drop=True)
 
-
-def watchlist_csv_line(artist, date=None, venue="", city="", state="", on_sale=None, link="", notes="") -> str:
-    """One line to paste at the bottom of watchlist.csv (quotes added where a value has a comma)."""
-    import csv
-    import io
-
-    buf = io.StringIO()
-    vals = [artist, date or "", venue, city, state, on_sale or "", link, notes]
-    csv.writer(buf, lineterminator="").writerow([str(v).strip() for v in vals])
-    return buf.getvalue()

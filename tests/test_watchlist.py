@@ -1,7 +1,7 @@
 """analytics/watchlist.py and the watchlist.csv loader."""
 import pandas as pd
 
-from analytics.watchlist import COLUMNS, on_sale_label, watchlist_csv_line, watchlist_table
+from analytics.watchlist import COLUMNS, on_sale_label, watchlist_table
 
 TODAY = "2026-11-25"
 
@@ -50,14 +50,6 @@ def test_on_sale_label():
     assert on_sale_label(pd.Timestamp("2026-11-30"), TODAY) == "On sale in 5 days"
 
 
-def test_csv_line_round_trips_commas():
-    line = watchlist_csv_line("Crosby, Stills & Nash", "2027-04-01", notes="presale, Tue")
-    assert line == '"Crosby, Stills & Nash",2027-04-01,,,,,,"presale, Tue"'
-    import io
-    row = pd.read_csv(io.StringIO("artist,date,venue,city,state,on_sale,link,notes\n" + line), dtype=str)
-    assert row.iloc[0]["artist"] == "Crosby, Stills & Nash"
-
-
 def test_loader_handles_header_only_and_missing_file(tmp_path, monkeypatch):
     import data.store as store
     monkeypatch.chdir(tmp_path)
@@ -67,4 +59,31 @@ def test_loader_handles_header_only_and_missing_file(tmp_path, monkeypatch):
     (tmp_path / "watchlist.csv").write_text("Artist,Date\n Big Thief ,2027-02-02\n,2027-01-01\n")
     df = store.load_watchlist_csv()
     assert list(df["artist"]) == ["Big Thief"]
-    assert pd.isna(df.iloc[0]["on_sale"])
+    assert df.iloc[0]["on_sale"] == ""
+
+
+def test_watchlist_csv_round_trip_keeps_commas_and_blanks():
+    from data.store import parse_watchlist, watchlist_to_csv
+    df = pd.DataFrame([{"artist": "Crosby, Stills & Nash", "date": "", "notes": "presale, Tue"},
+                       {"artist": "  "}])
+    text = watchlist_to_csv(df)
+    assert text.splitlines()[0] == "artist,date,venue,city,state,on_sale,link,notes"
+    back = parse_watchlist(text)
+    assert len(back) == 1 and back.iloc[0]["artist"] == "Crosby, Stills & Nash"
+    assert back.iloc[0]["notes"] == "presale, Tue" and back.iloc[0]["date"] == ""
+    assert watchlist_table(back, None, TODAY).iloc[0]["When"] == "Date TBA"
+
+
+def test_save_watchlist_rereads_github_and_commits(monkeypatch):
+    import data.store as store
+    import services.github_store as gh
+    calls = {}
+    monkeypatch.setattr(gh, "read_file", lambda repo, path, token: ("artist,date\nOld Band,2027-01-01\n", "sha1"))
+
+    def fake_write(repo, path, token, text, sha, message):
+        calls.update(text=text, sha=sha, message=message, path=path)
+    monkeypatch.setattr(gh, "write_file", fake_write)
+    row = {"artist": "New Band", "date": "2027-02-02"}
+    store.save_watchlist("me/repo", "token", lambda df: pd.concat([df, pd.DataFrame([row])]), "Watchlist: add")
+    assert calls["sha"] == "sha1" and calls["path"] == "watchlist.csv"
+    assert "Old Band,2027-01-01" in calls["text"] and "New Band,2027-02-02" in calls["text"]

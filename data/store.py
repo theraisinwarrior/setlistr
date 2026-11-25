@@ -97,25 +97,75 @@ def load_upcoming_csv() -> pd.DataFrame:
     return df[cols].reset_index(drop=True)
 
 
-WATCHLIST_CSV = "watchlist.csv"  # shows you'd like to see, typed in by hand
+WATCHLIST_CSV = "watchlist.csv"  # shows you'd like to see; the My Shows page saves it to GitHub
 
 
-def load_watchlist_csv() -> pd.DataFrame:
-    """Shows typed into watchlist.csv (artist required; date, venue, city, state, on_sale,
-    link, notes optional). Empty if the file is missing. Read fresh each run: it's a tiny file."""
+def parse_watchlist(text: str) -> pd.DataFrame:
+    """watchlist.csv text -> table (artist required; date, venue, city, state, on_sale,
+    link, notes optional). Empty table for empty or unreadable text."""
+    import io
     from analytics.watchlist import FIELDS
     try:
-        df = pd.read_csv(WATCHLIST_CSV, dtype=str)
-    except (FileNotFoundError, pd.errors.EmptyDataError):
+        df = pd.read_csv(io.StringIO(text), dtype=str, keep_default_na=False)
+    except (pd.errors.EmptyDataError, pd.errors.ParserError):
         return pd.DataFrame(columns=FIELDS)
     df.columns = [c.strip().lower() for c in df.columns]
     if "artist" not in df.columns:
         return pd.DataFrame(columns=FIELDS)
     for c in FIELDS:
         if c not in df.columns:
-            df[c] = None
-    df = df[FIELDS].apply(lambda col: col.str.strip())
-    return df.dropna(subset=["artist"]).reset_index(drop=True)
+            df[c] = ""
+    df = df[FIELDS].apply(lambda col: col.astype(str).str.strip())
+    return df[df["artist"] != ""].reset_index(drop=True)
+
+
+def watchlist_to_csv(df: pd.DataFrame) -> str:
+    from analytics.watchlist import FIELDS
+    out = df.reindex(columns=FIELDS).fillna("")
+    out = out[out["artist"].astype(str).str.strip() != ""]
+    return out.to_csv(index=False, lineterminator="\n")
+
+
+def load_watchlist_csv() -> pd.DataFrame:
+    """The watchlist.csv deployed with the app. Empty if the file is missing."""
+    try:
+        with open(WATCHLIST_CSV, encoding="utf-8") as f:
+            return parse_watchlist(f.read())
+    except FileNotFoundError:
+        return parse_watchlist("")
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_watchlist(repo: str, token: str) -> pd.DataFrame:
+    """The latest watchlist.csv on GitHub (so saves show up right away, before a redeploy).
+
+    Cached 5 minutes and cleared after each save. Failures raise GitHubStoreError (not cached).
+    """
+    from services.github_store import read_file
+    text, _ = read_file(repo, WATCHLIST_CSV, token)
+    return parse_watchlist(text)
+
+
+def save_watchlist(repo: str, token: str, change, message: str) -> None:
+    """Re-read watchlist.csv from GitHub, apply change(df) -> df, and commit the result."""
+    from services.github_store import read_file, write_file
+    text, sha = read_file(repo, WATCHLIST_CSV, token)
+    write_file(repo, WATCHLIST_CSV, token, watchlist_to_csv(change(parse_watchlist(text))), sha, message)
+    get_watchlist.clear()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def lookup_ticket_link(url: str, tm_api_key: str) -> dict:
+    """Watchlist fields for a pasted ticket link. Failures raise LinkError (not cached)."""
+    from services.ticket_links import lookup_link
+    return lookup_link(url, tm_api_key)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def search_ticketmaster_shows(keyword: str, city: str, tm_api_key: str) -> list:
+    """Upcoming Ticketmaster shows for an artist. Failures raise LinkError (not cached)."""
+    from services.ticket_links import search_ticketmaster
+    return search_ticketmaster(keyword, tm_api_key, city)
 
 
 def load_csv_attendance() -> pd.DataFrame:
