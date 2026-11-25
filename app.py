@@ -12,5 +12,6 @@ pg = st.navigation([
     st.Page("pages/2_Passport.py", title="Concert Passport", icon="🎫"),
     st.Page("pages/3_Compare.py", title="Compare with a Friend", icon="🤝"),
     st.Page("pages/4_Wrapped.py", title="Concert Wrapped", icon="🎁"),
+    st.Page("pages/5_Shows.py", title="My Shows", icon="🎟️"),
 ])
 pg.run()

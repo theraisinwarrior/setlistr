@@ -6,6 +6,7 @@ Same behavior as v1, restructured into modules so new features have a home.
 app.py                  entry point: page config, Spotify sidebar login, st.navigation
 pages/1_Builder.py      playlist builder UI
 pages/2_Passport.py     concert passport dashboard
+pages/5_Shows.py        My Shows: upcoming shows with tickets (upcoming_shows.csv) + watchlist (watchlist.csv)
 services/auth.py        credentials + owner/friend Spotify sessions
 services/setlistfm.py   setlist.fm API calls (timeouts, 429 retry) + stats scrape
 services/spotify_match.py  tiered track matching (no Streamlit imports)

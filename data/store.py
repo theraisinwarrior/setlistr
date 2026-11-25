@@ -97,6 +97,27 @@ def load_upcoming_csv() -> pd.DataFrame:
     return df[cols].reset_index(drop=True)
 
 
+WATCHLIST_CSV = "watchlist.csv"  # shows you'd like to see, typed in by hand
+
+
+def load_watchlist_csv() -> pd.DataFrame:
+    """Shows typed into watchlist.csv (artist required; date, venue, city, state, on_sale,
+    link, notes optional). Empty if the file is missing. Read fresh each run: it's a tiny file."""
+    from analytics.watchlist import FIELDS
+    try:
+        df = pd.read_csv(WATCHLIST_CSV, dtype=str)
+    except (FileNotFoundError, pd.errors.EmptyDataError):
+        return pd.DataFrame(columns=FIELDS)
+    df.columns = [c.strip().lower() for c in df.columns]
+    if "artist" not in df.columns:
+        return pd.DataFrame(columns=FIELDS)
+    for c in FIELDS:
+        if c not in df.columns:
+            df[c] = None
+    df = df[FIELDS].apply(lambda col: col.str.strip())
+    return df.dropna(subset=["artist"]).reset_index(drop=True)
+
+
 def load_csv_attendance() -> pd.DataFrame:
     """Fallback source. Raises FileNotFoundError if the CSV is missing."""
     return pd.read_csv(ATTENDANCE_CSV)
