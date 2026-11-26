@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from analytics.upcoming import upcoming_table
-from analytics.watchlist import FIELDS, TICKETS, ticket_rows, watchlist_table
+from analytics.watchlist import FIELDS, TICKETS, bought, ticket_rows, watchlist_table
 from data.display import dated_table
 from data.store import (get_watchlist, load_upcoming_csv, load_watchlist_csv, lookup_ticket_link,
                         save_watchlist, search_upcoming_shows)
@@ -89,6 +89,13 @@ def mark_bought(show: dict) -> None:
     _save(change, f"Watchlist: got tickets for {_label(show)}",
           f"🎟️ Moved {_label(show)} to Got Tickets." if show.get("date")
           else f"🎟️ Marked {_label(show)} as bought. Add its date to move it to Got Tickets.")
+
+
+def unmark_bought(show: dict) -> None:
+    def change(df):
+        df.loc[_same_show(df, show), "status"] = ""
+        return df
+    _save(change, f"Watchlist: no tickets for {_label(show)}", f"Moved {_label(show)} back to your watchlist.")
 
 
 def remove_show(show: dict) -> None:
@@ -227,9 +234,28 @@ st.subheader("🎫 Got Tickets")
 if tickets.empty:
     st.caption("Nothing yet. Press 🎟️ on a watchlist show when you buy tickets.")
 else:
-    dated_table(tickets, use_container_width=True, hide_index=True,
-                height=min(400, 38 + 35 * len(tickets)))
-    st.caption("Your setlist.fm Upcoming Shows (refreshed with ./sync) plus watchlist shows you marked 🎟️. "
+    if can_save:
+        # Shows marked 🎟️ on this page can be removed or moved back here; setlist.fm ones can't
+        bought_rows = watch_raw[bought(watch_raw)]
+        for i, t in tickets.iterrows():
+            lineup = {_key(a) for a in t["Lineup"].split(", ")}
+            mine = bought_rows[(bought_rows["date"] == t["Date"]) & bought_rows["artist"].map(_key).isin(lineup)]
+            r1, r2, r3 = st.columns([6, 1.3, 0.5], vertical_alignment="center")
+            place = ", ".join(str(x) for x in (t["Venue"], t["City"]) if pd.notna(x) and x)
+            r1.markdown(f"**{t['Lineup']}** · {_when(t['Date'])} ({t['When']})" + (f" · {place}" if place else ""))
+            if mine.empty:
+                r2.caption("From setlist.fm", help="Remove it on setlist.fm, then run ./sync.")
+                continue
+            show = mine.iloc[0].to_dict()
+            if r2.button("↩️ Watchlist", key=f"unbuy_{i}", use_container_width=True,
+                         help="Didn't get tickets after all? Moves it back to Want to See."):
+                unmark_bought(show)
+            if r3.button("🗑️", key=f"tdel_{i}", help="Remove this show"):
+                remove_show(show)
+    else:
+        dated_table(tickets, use_container_width=True, hide_index=True,
+                    height=min(400, 38 + 35 * len(tickets)))
+    st.caption("Your setlist.fm Upcoming Shows (refreshed with ./sync) plus shows you marked 🎟️ here. "
                "A show drops off once its date passes.")
 
 # ------------------------------------------
