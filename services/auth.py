@@ -52,6 +52,23 @@ def _is_owner_request() -> bool:
     return bool(key) and bool(given) and hmac.compare_digest(str(key), str(given))
 
 
+def is_owner() -> bool:
+    """True for the owner's private ?me= link, remembered for the rest of the visit."""
+    if _is_owner_request():
+        st.session_state["is_owner"] = True
+    return bool(st.session_state.get("is_owner")) or st.session_state.get("user_mode") == "owner"
+
+
+def get_github_token() -> str:
+    """Token that lets My Shows save watchlist.csv to the repo (optional)."""
+    return st.secrets.get("GITHUB_TOKEN", "")
+
+
+def get_ticketmaster_key() -> str:
+    """Ticketmaster Discovery API key for link lookups and artist search (optional)."""
+    return st.secrets.get("TICKETMASTER_API_KEY", "")
+
+
 def render_spotify_sidebar() -> None:
     """Friends log in with their own Spotify; the owner auto-connects via a private link."""
     sp_oauth = get_oauth()
