@@ -78,10 +78,12 @@ def test_save_watchlist_rereads_github_and_commits(monkeypatch):
     import data.store as store
     import services.github_store as gh
     calls = {}
-    monkeypatch.setattr(gh, "read_file", lambda repo, path, token: ("artist,date\nOld Band,2027-01-01\n", "sha1"))
+    monkeypatch.setattr(gh, "read_file", lambda repo, path, token: (
+        ("artist,date\nOld Band,2027-01-01\n", "sha1") if path == "watchlist.csv" else ("", None)))
 
     def fake_write(repo, path, token, text, sha, message):
-        calls.update(text=text, sha=sha, message=message, path=path)
+        if path == "watchlist.csv":
+            calls.update(text=text, sha=sha, message=message, path=path)
     monkeypatch.setattr(gh, "write_file", fake_write)
     row = {"artist": "New Band", "date": "2027-02-02"}
     store.save_watchlist("me/repo", "token", lambda df: pd.concat([df, pd.DataFrame([row])]), "Watchlist: add")

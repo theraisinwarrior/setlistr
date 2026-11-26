@@ -150,8 +150,29 @@ def save_watchlist(repo: str, token: str, change, message: str) -> None:
     """Re-read watchlist.csv from GitHub, apply change(df) -> df, and commit the result."""
     from services.github_store import read_file, write_file
     text, sha = read_file(repo, WATCHLIST_CSV, token)
-    write_file(repo, WATCHLIST_CSV, token, watchlist_to_csv(change(parse_watchlist(text))), sha, message)
+    new_df = change(parse_watchlist(text))
+    write_file(repo, WATCHLIST_CSV, token, watchlist_to_csv(new_df), sha, message)
     get_watchlist.clear()
+    save_watchlist_calendar(repo, token, new_df)
+
+
+WATCHLIST_ICS = "watchlist.ics"  # Apple Calendar subscribes to this file's raw GitHub URL
+
+
+def save_watchlist_calendar(repo: str, token: str, df: pd.DataFrame) -> None:
+    """Rewrite watchlist.ics to match the watchlist (skipped when nothing in it changed)."""
+    from analytics.watchlist_calendar import watchlist_ics
+    from services.github_store import GitHubStoreError, read_file, write_file
+
+    def body(ics: str) -> str:  # DTSTAMP changes every time, so ignore it when comparing
+        return "\n".join(ln for ln in ics.splitlines() if not ln.startswith("DTSTAMP:"))
+    new = watchlist_ics(df)
+    try:
+        old, sha = read_file(repo, WATCHLIST_ICS, token)
+        if body(old) != body(new):
+            write_file(repo, WATCHLIST_ICS, token, new, sha, "Watchlist calendar: update")
+    except GitHubStoreError as e:
+        raise GitHubStoreError(f"Your watchlist was saved, but the calendar didn't update: {e}")
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
