@@ -7,14 +7,14 @@ import services.ticket_links as tl
 
 FIXTURE = Path(__file__).parent / "fixtures" / "dice_event_page.html"
 
-TM_EVENT = {
-    "name": "Noah Kahan - The Great Divide Tour", "url": "https://www.ticketmaster.com/x/event/ABC",
-    "dates": {"start": {"localDate": "2027-06-18"}, "status": {"code": "onsale"}},
-    "sales": {"public": {"startDateTime": "2026-12-05T15:00:00Z"}},
-    "_embedded": {"venues": [{"name": "MetLife Stadium", "city": {"name": "East Rutherford"},
-                              "state": {"stateCode": "NJ"}}],
-                  "attractions": [{"name": "Noah Kahan"}, {"name": "Remi Wolf"}]},
+SG_EVENT = {
+    "id": 6123456, "title": "Noah Kahan with Remi Wolf", "url": "https://seatgeek.com/noah-kahan-tickets/x/concert/6123456",
+    "datetime_local": "2027-06-18T19:00:00", "date_tbd": False, "status": "normal",
+    "venue": {"name": "MetLife Stadium", "city": "East Rutherford", "state": "NJ"},
+    "performers": [{"name": "Remi Wolf", "primary": False}, {"name": "Noah Kahan", "primary": True}],
 }
+OTHER_EVENT = {**SG_EVENT, "id": 1, "title": "Noah", "performers": [{"name": "Noah", "primary": True}],
+               "venue": {"name": "Small Club", "city": "Newark", "state": "NJ"}}
 
 
 def test_reads_schema_org_event_from_a_ticket_page():
@@ -35,17 +35,17 @@ def test_cancelled_event_is_noted():
     assert tl.parse_event_html(page)["notes"].startswith("Cancelled")
 
 
-def test_ticketmaster_event_fields():
-    out = tl.from_ticketmaster_event(TM_EVENT, "https://link")
+def test_seatgeek_event_fields():
+    out = tl.from_seatgeek_event(SG_EVENT, "https://link")
     assert out["artist"] == "Noah Kahan" and out["notes"] == "with Remi Wolf"
-    assert (out["date"], out["venue"], out["city"], out["state"], out["on_sale"]) == (
-        "2027-06-18", "MetLife Stadium", "East Rutherford", "NJ", "2026-12-05")
+    assert (out["date"], out["venue"], out["city"], out["state"], out["link"]) == (
+        "2027-06-18", "MetLife Stadium", "East Rutherford", "NJ", "https://link")
+    assert tl.from_seatgeek_event({**SG_EVENT, "date_tbd": True})["date"] == ""
 
 
-def test_ticketmaster_event_id_only_for_ticketmaster_links():
-    assert tl.ticketmaster_event_id(
-        "https://www.ticketmaster.com/noah-kahan-east-rutherford-new-jersey-06-18-2027/event/02006123ABC") == "02006123ABC"
-    assert tl.ticketmaster_event_id("https://dice.fm/event/02006123ABC") == ""
+def test_seatgeek_event_id_only_for_seatgeek_links():
+    assert tl.seatgeek_event_id("https://seatgeek.com/noah-kahan-tickets/east-rutherford-2027-06-18/concert/6123456") == "6123456"
+    assert tl.seatgeek_event_id("https://www.ticketmaster.com/x/event/6123456") == ""
 
 
 def test_url_slug_gives_date_and_state():
@@ -65,12 +65,35 @@ class _Resp:
         return self._data
 
 
-def test_lookup_uses_ticketmaster_api_when_key_is_set(monkeypatch):
+def test_lookup_uses_seatgeek_api_for_seatgeek_links(monkeypatch):
     seen = []
-    monkeypatch.setattr(tl.requests, "get", lambda url, **kw: seen.append(url) or _Resp(data=TM_EVENT))
-    out = tl.lookup_link("https://www.ticketmaster.com/noah-kahan-06-18-2027/event/ABC", "KEY")
-    assert out["artist"] == "Noah Kahan" and out["source"] == "Ticketmaster"
-    assert seen == [f"{tl.TM_API}/events/ABC.json"]
+    monkeypatch.setattr(tl.requests, "get", lambda url, **kw: seen.append(url) or _Resp(data=SG_EVENT))
+    out = tl.lookup_link("https://seatgeek.com/noah-kahan-tickets/x/concert/6123456", "ID")
+    assert out["artist"] == "Noah Kahan" and out["source"] == "SeatGeek"
+    assert seen == [f"{tl.SG_API}/events/6123456"]
+
+
+def test_ticketmaster_link_is_matched_on_seatgeek(monkeypatch):
+    seen = []
+
+    def fake_get(url, params=None, **kw):
+        if "ticketmaster" in url:
+            return _Resp(status=403)  # Ticketmaster blocks apps
+        seen.append(params)
+        return _Resp(data={"events": [OTHER_EVENT, SG_EVENT]})
+    monkeypatch.setattr(tl.requests, "get", fake_get)
+    link = "https://www.ticketmaster.com/noah-kahan-east-rutherford-new-jersey-06-18-2027/event/02006ABC"
+    out = tl.lookup_link(link, "ID")
+    assert out["artist"] == "Noah Kahan" and out["venue"] == "MetLife Stadium"  # longest name match wins
+    assert out["link"] == link and "SeatGeek" in out["source"]
+    assert seen[0]["datetime_local.gte"] == "2027-06-18" and seen[0]["datetime_local.lt"] == "2027-06-19"
+    assert seen[0]["venue.state"] == "NJ"
+
+
+def test_search_keeps_only_shows_by_that_artist(monkeypatch):
+    unrelated = {**SG_EVENT, "title": "Tribute Night", "performers": [{"name": "Kahan Tribute Band"}]}
+    monkeypatch.setattr(tl.requests, "get", lambda url, **kw: _Resp(data={"events": [SG_EVENT, unrelated]}))
+    assert [r["artist"] for r in tl.search_seatgeek("noah kahan", "ID")] == ["Noah Kahan"]
 
 
 def test_lookup_falls_back_to_link_text_when_page_is_blocked(monkeypatch):

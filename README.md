@@ -32,9 +32,10 @@ Settings → Secrets):
 
 - `GITHUB_TOKEN`: a fine-grained token from github.com/settings/personal-access-tokens/new,
   limited to the setlistr repo, with Repository permissions → Contents: Read and write.
-- `TICKETMASTER_API_KEY` (optional): the free "Consumer Key" from developer.ticketmaster.com.
-  Turns on artist search and reads Ticketmaster/Live Nation links. Other links (Dice, AXS,
-  venue sites) are read from the page itself where the site allows it.
+- `SEATGEEK_CLIENT_ID` (optional): free, from seatgeek.com/account/develop. Turns on artist
+  search, reads SeatGeek links, and finds Ticketmaster/Live Nation links' shows on SeatGeek
+  (Ticketmaster's pages block apps, and its own API is for companies only). Other links (Dice,
+  AXS, venue sites) are read from the page itself where the site allows it.
 
 Editing only shows up for the owner (the `?me=<OWNER_KEY>` link). Everyone else sees the lists read-only.
 
