@@ -44,6 +44,10 @@ STATES = {
 }
 
 
+# Neighborhood-style city names some sites use, mapped to the names upcoming_shows.csv uses
+CITY_NAMES = {"Manhattan": "New York", "New York City": "New York", "NYC": "New York"}
+
+
 class LinkError(Exception):
     """A problem reading a link, with a message that is safe to show the user."""
 
@@ -212,13 +216,14 @@ def parse_event_html(page: str, link: str = "") -> dict:
             out["venue"] = _name(loc)
             addr = loc.get("address") or {}
             if isinstance(addr, dict):
-                out["city"] = _name(addr.get("addressLocality"))
+                out["city"] = CITY_NAMES.get(_name(addr.get("addressLocality")),
+                                             _name(addr.get("addressLocality")))
                 out["state"] = _state_code(_name(addr.get("addressRegion")))
         offers = ev.get("offers") or {}
         offers = offers[0] if isinstance(offers, list) and offers else offers
         if isinstance(offers, dict):
             sale = _day(offers.get("validFrom") or offers.get("availabilityStarts"))
-            if sale and (not out["date"] or sale <= out["date"]):
+            if sale and (not out["date"] or sale < out["date"]):  # Songkick puts the show date here
                 out["on_sale"] = sale
         status = str(ev.get("eventStatus", ""))
         if status.endswith(("Cancelled", "Postponed", "Rescheduled")):
@@ -260,6 +265,27 @@ def parse_url_slug(url: str) -> dict:
     return out
 
 
+def parse_songkick_slug(url: str) -> dict:
+    """Songkick links name the act and venue: /concerts/43456599-leon-bridges-at-madison-square-garden."""
+    out = blank(url)
+    m = re.search(r"songkick\.com/concerts/\d+-([a-z0-9-]+)", url.lower())
+    if not m:
+        return out
+    artist, _, venue = m.group(1).partition("-at-")
+    out["artist"] = " ".join(w.capitalize() for w in artist.split("-") if w)
+    out["venue"] = " ".join(w.capitalize() for w in venue.split("-") if w)
+    return out
+
+
+def match_on_seatgeek_by_venue(guess: dict, client_id: str):
+    """The artist's next SeatGeek show at the guessed venue, keeping the original link. Or None."""
+    venue = _key(guess["venue"])
+    for show in search_seatgeek(guess["artist"], client_id):
+        if venue and (venue in _key(show["venue"]) or _key(show["venue"]) in venue):
+            return {**show, "link": guess["link"]}
+    return None
+
+
 # ---------- putting it together ----------
 
 def lookup_link(url: str, sg_client_id: str = "") -> dict:
@@ -281,13 +307,17 @@ def lookup_link(url: str, sg_client_id: str = "") -> dict:
                 return {**found, "source": "the ticket page"}
     except requests.RequestException:
         pass
+    songkick = parse_songkick_slug(url)
     if sg_client_id:  # e.g. Ticketmaster, whose pages block apps: find the same show on SeatGeek
         try:
-            found = match_link_on_seatgeek(url, sg_client_id)
+            found = (match_on_seatgeek_by_venue(songkick, sg_client_id) if songkick["artist"]
+                     else match_link_on_seatgeek(url, sg_client_id))
         except LinkError:
             found = None
         if found:
-            return {**found, "source": "SeatGeek's listing for that night (double-check it's the right show)"}
+            return {**found, "source": "SeatGeek's listing for that show (double-check it's the right one)"}
+    if songkick["artist"]:
+        return {**songkick, "source": "the link text (add the date)"}
     guess = parse_url_slug(url)
     if guess["artist"] or guess["date"]:
         return {**guess, "source": "the link text (double-check the artist name)"}

@@ -67,7 +67,7 @@ def test_watchlist_csv_round_trip_keeps_commas_and_blanks():
     df = pd.DataFrame([{"artist": "Crosby, Stills & Nash", "date": "", "notes": "presale, Tue"},
                        {"artist": "  "}])
     text = watchlist_to_csv(df)
-    assert text.splitlines()[0] == "artist,date,venue,city,state,on_sale,link,notes"
+    assert text.splitlines()[0] == "artist,date,venue,city,state,on_sale,link,notes,status"
     back = parse_watchlist(text)
     assert len(back) == 1 and back.iloc[0]["artist"] == "Crosby, Stills & Nash"
     assert back.iloc[0]["notes"] == "presale, Tue" and back.iloc[0]["date"] == ""
@@ -87,3 +87,23 @@ def test_save_watchlist_rereads_github_and_commits(monkeypatch):
     store.save_watchlist("me/repo", "token", lambda df: pd.concat([df, pd.DataFrame([row])]), "Watchlist: add")
     assert calls["sha"] == "sha1" and calls["path"] == "watchlist.csv"
     assert "Old Band,2027-01-01" in calls["text"] and "New Band,2027-02-02" in calls["text"]
+
+
+def test_bought_shows_move_to_tickets_with_openers():
+    from analytics.upcoming import upcoming_table
+    from analytics.watchlist import ticket_rows
+    df = _watch([
+        {"artist": "Leon Bridges", "date": "2027-05-01", "venue": "Madison Square Garden", "city": "New York",
+         "state": "NY", "notes": "with El Michels Affair, Mari Froes", "status": "tickets"},
+        {"artist": "Big Thief", "date": "2027-04-10", "status": ""},
+        {"artist": "Undated Band", "date": "", "status": "tickets"},
+    ])
+    rows = ticket_rows(df)
+    assert list(rows["artist"]) == ["Leon Bridges", "El Michels Affair", "Mari Froes"]
+    up = upcoming_table(rows, today=TODAY)
+    assert up.iloc[0]["Lineup"] == "Leon Bridges, El Michels Affair, Mari Froes"
+    out = watchlist_table(df, rows, TODAY, keep_row=True)
+    # the dated bought show left the watchlist; the undated one stays, marked
+    assert list(out["Artist"]) == ["Big Thief", "Undated Band"]
+    assert out.set_index("Artist").loc["Undated Band", "Status"] == "🎟️ Got tickets"
+    assert list(out["_row"]) == [1, 2]

@@ -110,3 +110,46 @@ def test_lookup_reads_the_page(monkeypatch):
 def test_lookup_rejects_non_links():
     with pytest.raises(tl.LinkError):
         tl.lookup_link("big thief")
+
+
+SONGKICK_PAGE = """<script type="application/ld+json">[{"@context":"http://schema.org","@type":"MusicEvent",
+"name":"Leon Bridges @ Madison Square Garden","location":{"@type":"Place","address":{"@type":"PostalAddress",
+"addressLocality":"Manhattan","addressCountry":"US","addressRegion":"NY"},"name":"Madison Square Garden"},
+"eventStatus":"https://schema.org/EventScheduled","startDate":"2027-05-01T19:00:00","endDate":"2027-05-01",
+"performer":[{"@type":"MusicGroup","name":"Leon Bridges"},{"@type":"MusicGroup","name":"El Michels Affair"},
+{"@type":"MusicGroup","name":"Mari Froes"}],"offers":[{"@type":"Offer","validFrom":"2027-05-01"}]}]</script>"""
+SK_LINK = "https://www.songkick.com/concerts/43456599-leon-bridges-at-madison-square-garden"
+
+
+def test_songkick_page():
+    out = tl.parse_event_html(SONGKICK_PAGE, SK_LINK)
+    assert (out["artist"], out["date"], out["venue"], out["city"], out["state"]) == (
+        "Leon Bridges", "2027-05-01", "Madison Square Garden", "New York", "NY")
+    assert out["notes"] == "with El Michels Affair, Mari Froes"
+    assert out["on_sale"] == ""  # Songkick's validFrom is just the show date
+
+
+def test_songkick_link_text():
+    out = tl.parse_songkick_slug(SK_LINK)
+    assert out["artist"] == "Leon Bridges" and out["venue"] == "Madison Square Garden"
+
+
+def test_blocked_songkick_page_is_matched_on_seatgeek_by_venue(monkeypatch):
+    msg = {**SG_EVENT, "performers": [{"name": "Leon Bridges", "primary": True}],
+           "datetime_local": "2027-05-01T19:00:00",
+           "venue": {"name": "Madison Square Garden", "city": "New York", "state": "NY"}}
+
+    def fake_get(url, params=None, **kw):
+        if "songkick" in url:
+            return _Resp(status=403)
+        return _Resp(data={"events": [{**msg, "venue": {"name": "Other Arena", "city": "Boston", "state": "MA"},
+                                       "datetime_local": "2027-04-20T19:00:00"}, msg]})
+    monkeypatch.setattr(tl.requests, "get", fake_get)
+    out = tl.lookup_link(SK_LINK, "ID")
+    assert out["date"] == "2027-05-01" and out["link"] == SK_LINK
+
+
+def test_blocked_songkick_page_without_seatgeek_uses_link_text(monkeypatch):
+    monkeypatch.setattr(tl.requests, "get", lambda url, **kw: _Resp(status=403))
+    out = tl.lookup_link(SK_LINK)
+    assert out["artist"] == "Leon Bridges" and out["venue"] == "Madison Square Garden" and out["date"] == ""
