@@ -1,12 +1,12 @@
 """Turn a ticket link (or an artist search) into watchlist fields. No Streamlit imports.
 
-Three sources, best first:
-1. Ticketmaster / Live Nation links and artist search, through Ticketmaster's free Discovery
-   API (needs TICKETMASTER_API_KEY). Their web pages block scripts, so this is the reliable route.
+Sources, best first:
+1. SeatGeek links and artist search, through SeatGeek's free API (needs SEATGEEK_CLIENT_ID).
 2. Any other ticket page (Dice, AXS, Eventbrite, venue sites...): most embed a schema.org
    "Event" block for search engines, which has the artist, date, venue and city.
-3. The link's own text: Ticketmaster-style links end in "...-new-york-12-08-2026/event/...",
-   which gives at least a date and state when the page can't be read.
+3. Ticketmaster / Live Nation pages block apps, but their links end in
+   "...-new-york-12-08-2026/event/...", so the same night is looked up on SeatGeek and matched
+   by act name. Without a SeatGeek ID, the link text alone gives the date and state.
 
 Every function returns a dict with the watchlist fields (artist, date, venue, city, state,
 on_sale, link, notes), blank where unknown, so the form can be filled in and corrected.
@@ -16,10 +16,12 @@ import json
 import re
 from urllib.parse import urlparse
 
+from datetime import date, timedelta
+
 import requests
 
 TIMEOUT = 8
-TM_API = "https://app.ticketmaster.com/discovery/v2"
+SG_API = "https://api.seatgeek.com/2"
 BROWSER_HEADERS = {
     "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                    "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"),
@@ -64,70 +66,98 @@ def _state_code(value) -> str:
     return STATES.get(v.lower(), v)
 
 
-# ---------- 1. Ticketmaster Discovery API ----------
+# ---------- 1. SeatGeek API ----------
 
-def ticketmaster_event_id(url: str) -> str:
-    """The event id in a Ticketmaster / Live Nation link, or ''."""
-    host = urlparse(url).netloc.lower()
-    if "ticketmaster" not in host and "livenation" not in host:
+def _key(text) -> str:
+    return "".join(ch for ch in str(text).lower() if ch.isalnum())
+
+
+def seatgeek_event_id(url: str) -> str:
+    """The event id in a SeatGeek link (.../concert/1234567), or ''."""
+    if "seatgeek" not in urlparse(url).netloc.lower():
         return ""
-    m = re.search(r"/event/([A-Za-z0-9]+)", url)
+    m = re.search(r"/(\d{5,})(?:[/?#]|$)", url)
     return m.group(1) if m else ""
 
 
-def from_ticketmaster_event(ev: dict, link: str = "") -> dict:
-    """Watchlist fields from one Discovery API event."""
+def from_seatgeek_event(ev: dict, link: str = "") -> dict:
+    """Watchlist fields from one SeatGeek API event."""
     out = blank(link or ev.get("url", ""))
-    emb = ev.get("_embedded", {}) or {}
-    acts = [a.get("name", "") for a in emb.get("attractions", []) or [] if a.get("name")]
-    out["artist"] = acts[0] if acts else ev.get("name", "")
+    performers = sorted(ev.get("performers") or [], key=lambda p: not p.get("primary"))
+    acts = [p.get("name", "") for p in performers if p.get("name")]
+    out["artist"] = acts[0] if acts else ev.get("short_title") or ev.get("title", "")
     if len(acts) > 1:
         out["notes"] = "with " + ", ".join(acts[1:])
-    dates = ev.get("dates", {}) or {}
-    out["date"] = _day((dates.get("start") or {}).get("localDate"))
-    status = (dates.get("status") or {}).get("code", "")
-    if status in ("cancelled", "postponed", "rescheduled"):
-        out["notes"] = f"{status.title()} on Ticketmaster" + (f"; {out['notes']}" if out["notes"] else "")
-    out["on_sale"] = _day(((ev.get("sales") or {}).get("public") or {}).get("startDateTime"))
-    venues = emb.get("venues", []) or []
-    if venues:
-        v = venues[0]
-        out["venue"] = v.get("name", "")
-        out["city"] = (v.get("city") or {}).get("name", "")
-        out["state"] = (v.get("state") or {}).get("stateCode", "")
+    if not ev.get("date_tbd"):
+        out["date"] = _day(ev.get("datetime_local"))
+    venue = ev.get("venue") or {}
+    out["venue"] = venue.get("name", "") or ""
+    out["city"] = venue.get("city", "") or ""
+    out["state"] = venue.get("state", "") or ""
+    status = str(ev.get("status") or "").lower()
+    for word in ("cancel", "postpone", "reschedul"):
+        if word in status:
+            out["notes"] = f"{status.title()} on SeatGeek" + (f"; {out['notes']}" if out["notes"] else "")
     return out
 
 
-def _tm_get(path: str, api_key: str, params: dict = None) -> dict:
+def _sg_get(path: str, client_id: str, params: dict = None) -> dict:
     try:
-        resp = requests.get(f"{TM_API}/{path}", params={**(params or {}), "apikey": api_key},
+        resp = requests.get(f"{SG_API}/{path}", params={**(params or {}), "client_id": client_id},
                             timeout=TIMEOUT)
     except requests.RequestException:
-        raise LinkError("Couldn't reach Ticketmaster. Try again in a minute.")
+        raise LinkError("Couldn't reach SeatGeek. Try again in a minute.")
     if resp.status_code == 404:
-        raise LinkError("Ticketmaster doesn't know that event (it may be a resale or partner link).")
+        raise LinkError("SeatGeek doesn't know that event.")
     if resp.status_code == 429:
-        raise LinkError("Ticketmaster is rate-limiting requests. Try again in a minute.")
+        raise LinkError("SeatGeek is rate-limiting requests. Try again in a minute.")
     if resp.status_code in (401, 403):
-        raise LinkError("Ticketmaster rejected the API key. Check TICKETMASTER_API_KEY in the app's secrets.")
+        raise LinkError("SeatGeek rejected the Client ID. Check SEATGEEK_CLIENT_ID in the app's secrets.")
     if not resp.ok:
-        raise LinkError(f"Ticketmaster returned an error ({resp.status_code}).")
+        raise LinkError(f"SeatGeek returned an error ({resp.status_code}).")
     return resp.json()
 
 
-def fetch_ticketmaster_event(event_id: str, api_key: str, link: str = "") -> dict:
-    return from_ticketmaster_event(_tm_get(f"events/{event_id}.json", api_key), link)
+def fetch_seatgeek_event(event_id: str, client_id: str, link: str = "") -> dict:
+    return from_seatgeek_event(_sg_get(f"events/{event_id}", client_id), link)
 
 
-def search_ticketmaster(keyword: str, api_key: str, city: str = "", size: int = 20) -> list:
-    """Upcoming music events matching an artist name, soonest first (optionally in one city)."""
-    params = {"keyword": keyword.strip(), "classificationName": "music", "sort": "date,asc",
-              "size": size}
+def search_seatgeek(keyword: str, client_id: str, city: str = "", size: int = 25) -> list:
+    """Upcoming concerts where an act's name contains the search, soonest first (optionally one city)."""
+    params = {"q": keyword.strip(), "taxonomies.name": "concert", "sort": "datetime_local.asc",
+              "per_page": size}
     if city.strip():
-        params["city"] = city.strip()
-    data = _tm_get("events.json", api_key, params)
-    events = (data.get("_embedded") or {}).get("events", []) or []
-    return [from_ticketmaster_event(ev) for ev in events]
+        params["venue.city"] = city.strip()
+    events = _sg_get("events", client_id, params).get("events", []) or []
+    want = _key(keyword)
+    hits = [ev for ev in events
+            if any(want in _key(p.get("name", "")) for p in ev.get("performers") or [])
+            or want in _key(ev.get("title", ""))]
+    return [from_seatgeek_event(ev) for ev in hits]
+
+
+def match_link_on_seatgeek(url: str, client_id: str):
+    """Find the show a ticket link points to (e.g. a Ticketmaster link) among SeatGeek's
+    concerts on that date in that state, by matching act names against the link's words.
+    Returns watchlist fields with the original link, or None."""
+    guess = parse_url_slug(url)
+    if not guess["date"]:
+        return None
+    day = guess["date"]
+    nxt = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
+    params = {"taxonomies.name": "concert", "datetime_local.gte": day, "datetime_local.lt": nxt,
+              "per_page": 100}
+    if guess["state"]:
+        params["venue.state"] = guess["state"]
+    events = _sg_get("events", client_id, params).get("events", []) or []
+    words = _key(guess["artist"])
+    best, best_len = None, 0
+    for ev in events:
+        for p in ev.get("performers") or []:
+            name = _key(p.get("name", ""))
+            if len(name) >= 3 and name in words and len(name) > best_len:
+                best, best_len = ev, len(name)
+    return from_seatgeek_event(best, url) if best else None
 
 
 # ---------- 2. schema.org Event data in the page ----------
@@ -232,15 +262,15 @@ def parse_url_slug(url: str) -> dict:
 
 # ---------- putting it together ----------
 
-def lookup_link(url: str, tm_api_key: str = "") -> dict:
+def lookup_link(url: str, sg_client_id: str = "") -> dict:
     """Best watchlist fields for a pasted link, plus a 'source' saying how they were found."""
     url = url.strip()
     if not re.match(r"https?://", url):
         raise LinkError("That doesn't look like a link. It should start with https://")
-    tm_id = ticketmaster_event_id(url)
-    if tm_id and tm_api_key:
+    sg_id = seatgeek_event_id(url)
+    if sg_id and sg_client_id:
         try:
-            return {**fetch_ticketmaster_event(tm_id, tm_api_key, url), "source": "Ticketmaster"}
+            return {**fetch_seatgeek_event(sg_id, sg_client_id, url), "source": "SeatGeek"}
         except LinkError:
             pass  # fall through to reading the page / the link text
     try:
@@ -251,6 +281,13 @@ def lookup_link(url: str, tm_api_key: str = "") -> dict:
                 return {**found, "source": "the ticket page"}
     except requests.RequestException:
         pass
+    if sg_client_id:  # e.g. Ticketmaster, whose pages block apps: find the same show on SeatGeek
+        try:
+            found = match_link_on_seatgeek(url, sg_client_id)
+        except LinkError:
+            found = None
+        if found:
+            return {**found, "source": "SeatGeek's listing for that night (double-check it's the right show)"}
     guess = parse_url_slug(url)
     if guess["artist"] or guess["date"]:
         return {**guess, "source": "the link text (double-check the artist name)"}

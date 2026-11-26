@@ -8,8 +8,8 @@ from analytics.upcoming import upcoming_table
 from analytics.watchlist import FIELDS, watchlist_table
 from data.display import dated_table
 from data.store import (get_watchlist, load_upcoming_csv, load_watchlist_csv, lookup_ticket_link,
-                        save_watchlist, search_ticketmaster_shows)
-from services.auth import get_github_token, get_ticketmaster_key, is_owner
+                        save_watchlist, search_upcoming_shows)
+from services.auth import get_github_token, get_seatgeek_client_id, is_owner
 from services.github_store import GitHubStoreError
 from services.ticket_links import LinkError, blank
 
@@ -18,7 +18,7 @@ REPO = st.secrets.get("GITHUB_REPO", "theraisinwarrior/setlistr")
 st.title("🎟️ My Shows")
 st.caption("Shows you have tickets to, and shows you're keeping an eye on.")
 
-owner, token, tm_key = is_owner(), get_github_token(), get_ticketmaster_key()
+owner, token, sg_id = is_owner(), get_github_token(), get_seatgeek_client_id()
 can_save = owner and bool(token)
 
 # The watchlist is read from GitHub when a token is set, so a save shows up right away
@@ -143,7 +143,7 @@ if can_save:
         if looked and url.strip():
             try:
                 with st.spinner("Reading the link..."):
-                    st.session_state["link_draft"] = lookup_ticket_link(url.strip(), tm_key)
+                    st.session_state["link_draft"] = lookup_ticket_link(url.strip(), sg_id)
             except LinkError as e:
                 st.session_state["link_draft"] = {**blank(url.strip()), "source": ""}
                 st.warning(str(e))
@@ -156,25 +156,25 @@ if can_save:
             show_form(draft, "link_form")
 
     with tabs[1]:
-        if not tm_key:
-            st.caption("Add a free Ticketmaster API key to the app's secrets as TICKETMASTER_API_KEY "
+        if not sg_id:
+            st.caption("Add a free SeatGeek Client ID to the app's secrets as SEATGEEK_CLIENT_ID "
                        "to search for an artist's upcoming dates here.")
         else:
-            with st.form("tm_search", border=False):
+            with st.form("sg_search", border=False):
                 s1, s2, s3 = st.columns([3, 2, 1], vertical_alignment="bottom")
                 artist_q = s1.text_input("Artist")
                 city_q = s2.text_input("City (optional)", placeholder="e.g. New York")
                 searched = s3.form_submit_button("Search", use_container_width=True)
             if searched and artist_q.strip():
                 try:
-                    with st.spinner("Searching Ticketmaster..."):
-                        st.session_state["tm_results"] = search_ticketmaster_shows(
-                            artist_q.strip(), city_q.strip(), tm_key)
+                    with st.spinner("Searching SeatGeek..."):
+                        st.session_state["sg_results"] = search_upcoming_shows(
+                            artist_q.strip(), city_q.strip(), sg_id)
                 except LinkError as e:
                     st.warning(str(e))
-            results = st.session_state.get("tm_results")
+            results = st.session_state.get("sg_results")
             if results == []:
-                st.caption("No upcoming Ticketmaster dates found. Try without the city, or use another tab.")
+                st.caption("No upcoming dates found on SeatGeek. Try without the city, or use another tab.")
             for i, show in enumerate(results or []):
                 r1, r2 = st.columns([5, 1], vertical_alignment="center")
                 when = pd.Timestamp(show["date"]).strftime("%a %b %-d, %Y") if show["date"] else "Date TBA"
@@ -185,7 +185,7 @@ if can_save:
                 where = already_listed(show)
                 if where:
                     r2.caption(f"✓ {where.replace('on your ', '').replace('in your ', '').capitalize()}")
-                elif r2.button("➕ Add", key=f"tm_add_{i}", use_container_width=True):
+                elif r2.button("➕ Add", key=f"sg_add_{i}", use_container_width=True):
                     add_show(show)
 
     with tabs[2]:

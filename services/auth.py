@@ -64,9 +64,9 @@ def get_github_token() -> str:
     return st.secrets.get("GITHUB_TOKEN", "")
 
 
-def get_ticketmaster_key() -> str:
-    """Ticketmaster Discovery API key for link lookups and artist search (optional)."""
-    return st.secrets.get("TICKETMASTER_API_KEY", "")
+def get_seatgeek_client_id() -> str:
+    """SeatGeek API Client ID for link lookups and artist search on My Shows (optional)."""
+    return st.secrets.get("SEATGEEK_CLIENT_ID", "")
 
 
 def render_spotify_sidebar() -> None:

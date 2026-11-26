@@ -155,17 +155,17 @@ def save_watchlist(repo: str, token: str, change, message: str) -> None:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def lookup_ticket_link(url: str, tm_api_key: str) -> dict:
+def lookup_ticket_link(url: str, sg_client_id: str) -> dict:
     """Watchlist fields for a pasted ticket link. Failures raise LinkError (not cached)."""
     from services.ticket_links import lookup_link
-    return lookup_link(url, tm_api_key)
+    return lookup_link(url, sg_client_id)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def search_ticketmaster_shows(keyword: str, city: str, tm_api_key: str) -> list:
-    """Upcoming Ticketmaster shows for an artist. Failures raise LinkError (not cached)."""
-    from services.ticket_links import search_ticketmaster
-    return search_ticketmaster(keyword, tm_api_key, city)
+def search_upcoming_shows(keyword: str, city: str, sg_client_id: str) -> list:
+    """Upcoming concerts for an artist, from SeatGeek. Failures raise LinkError (not cached)."""
+    from services.ticket_links import search_seatgeek
+    return search_seatgeek(keyword, sg_client_id, city)
 
 
 def load_csv_attendance() -> pd.DataFrame:
