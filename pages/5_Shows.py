@@ -289,6 +289,16 @@ else:
                 height=min(400, 38 + 35 * len(watch)),
                 column_config={"Link": st.column_config.LinkColumn("Link", display_text="Tickets")})
 
+if owner:
+    with st.expander("📅 Get reminders in Apple Calendar"):
+        feed = f"raw.githubusercontent.com/{REPO}/main/watchlist.ics"
+        st.write("Subscribe once and every dated Want to See show appears in your calendar, with alerts "
+                 "2 weeks and 1 week before. Pressing 🎟️ Got tickets takes it off the calendar.")
+        st.link_button("📅 Subscribe on this device", f"webcal://{feed}")
+        st.caption("Or in Calendar on your Mac: File → New Calendar Subscription, paste this, then set "
+                   "Auto-refresh to Every hour:")
+        st.code(f"https://{feed}", language=None)
+
 if can_save and not watch_raw.empty:
     with st.expander("✏️ Edit details"):
         st.caption("Fix a date, venue or note here, then save. Status \"tickets\" means you've bought them.")
